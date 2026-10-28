@@ -1,0 +1,41 @@
+# cursor_row=36 cursor_col=2 cols=50 rows=40
+ ▝▝   ▝▝   /…/scratchpad/fyi-work
+
+
+⏺ watchtool: its session.append hook was
+  skipped. "example-guard-default" runs
+  first and sent the event on past it.
+                                              [-]
+✦ You should know · Release builds fall back
+  to the debug key when keystore.properties
+  is missing, so a phone that has the signed
+  app will refuse the update.
+
+  Why the phone refuses it
+  Android only installs an update signed with
+  the same key as the app already on the
+  phone. A debug-signed APK looks like a
+  different app, so the install fails with a
+  signature conflict instead of updating.
+  keystore.properties ── yes ──▶ release key…
+          │
+          no
+          ▼
+     debug key ──▶ "App not installed"
+  Check that keystore.properties sits next to
+  settings.gradle.kts before you build.
+
+  What to do
+  Keep keystore.properties and
+  rex-mobile-release.jks on every machine
+  that builds releases, and look for
+  signingConfig release in the build log.
+
+  1: Understood   2: Chat in main session
+  0: Dismiss
+
+──────────────────────────────────────────────────
+❯ Try "edit <filepath> to..."
+──────────────────────────────────────────────────
+  Alex │ Haiku 5.5@medium │ ▁ 0/1M 0%   ▁ 0% ·1…
+  ⏵⏵ auto mode on (shift+tab to cycle)

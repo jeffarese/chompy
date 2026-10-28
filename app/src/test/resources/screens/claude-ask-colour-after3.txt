@@ -1,0 +1,31 @@
+# cursor_row=26 cursor_col=2 cols=46 rows=30
+  Comets have also inspired fear and wonder
+  for as long as people have recorded the sky.
+  Ancient observers often read them as omens,
+  and the Bayeux Tapestry depicts Halley's
+  Comet in 1066. Today we understand them as
+  messengers from the early solar system,
+  carrying a record of conditions that existed
+  billions of years ago, and each visit
+  offers a rare chance to read that record.
+
+✻ Brewed for 5s · done 1:35 AM
+
+❯ Use the AskUserQuestion tool to ask me
+  which of three colours I prefer: red, green
+  or blue. Give each option a short
+  description.
+
+⏺ User answered Claude's questions:
+  ⎿  · Which of these three colours do you
+     prefer? → Blue
+
+⏺ You prefer blue.
+
+✻ Sautéed for 2s · done 1:35 AM
+                          ◐ medium · /effort
+──────────────────────────────────────────────
+❯
+──────────────────────────────────────────────
+  Alex │ Haiku 5.5@medium │ ▁ 50.1k/1M 5% │…
+  ⏸ manual mode on

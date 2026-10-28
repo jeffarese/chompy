@@ -1,0 +1,31 @@
+# cursor_row=26 cursor_col=2 cols=46 rows=30
+
+
+✻ Sautéed for 2s · done 1:35 AM
+
+❯ Use the AskUserQuestion tool with
+  multiSelect set to true to ask me which
+  fruits I like: apple, banana, cherry.
+
+⏺ User answered Claude's questions:
+  ⎿  · Which fruits do you like? → Apple,
+     Cherry
+
+⏺ You like apple and cherry.
+
+✻ Worked for 2s · done 1:36 AM
+
+❯ Write a 600-word essay about volcanoes as
+  plain text. Don't use any tools.
+
+⏺ Volcanoes are openings in the Earth's crust
+  through which molten rock, gas, and ash
+  escape from the interior. They are among the
+
+✽ Lollygagging… (1s · ↓ 4 tokens)
+
+──────────────────────────────────────────────
+❯
+──────────────────────────────────────────────
+  Alex │ Haiku 5.5@medium │ ▁ 50.7k/1M 5% │…
+  ⏸ manual mode on

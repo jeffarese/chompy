@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Plain http:// reaches Rex on a tailnet, such as http://100.x.y.z:7297, whose traffic WireGuard
+  already encrypts. Android can't name 100.64.0.0/10 here, so checkAddress keeps http:// to tailnet
+  and local addresses instead.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

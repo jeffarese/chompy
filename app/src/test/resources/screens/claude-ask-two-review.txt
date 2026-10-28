@@ -1,0 +1,31 @@
+# cursor_row=28 cursor_col=0 cols=80 rows=30
+⏺ watchtool: its session.append hook was skipped.
+  "example-guard-default" runs first and sent the event on past it.
+
+❯ Use the AskUserQuestion tool once, with two questions: first a single-choice
+ ▐▛███▛█   Claude Code v2.1.312
+▝▜██████▀  Haiku 4.5 · Claude Max
+ ▝▝   ▝▝   ~/askq
+
+
+⏺ watchtool: its session.append hook was skipped. "example-guard-default" runs first and sent the event on past it.
+
+❯ Use the AskUserQuestion tool once, with two questions: first a single-choice question with header "Colour" asking which of red, green or blue I prefer, then a
+  multiSelect question with header "Fruits" asking which of apple, banana and cherry I like. Short descriptions for each option.
+
+⏺ I'll ask you those two questions using the AskUserQuestion tool.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☒ Colour  ☒ Fruits  ✔ Submit  →
+
+Review your answers
+
+ ● Which colour do you prefer?
+   → deep purple
+ ● Which of these fruits do you like?
+   → Apple, Cherry, figs
+
+Ready to submit your answers?
+
+❯ 1. Submit answers
+  2. Cancel

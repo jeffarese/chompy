@@ -1,0 +1,31 @@
+# cursor_row=26 cursor_col=2 cols=46 rows=30
+    time.sleep(40)' in the prompt. Its output
+    then lands directly in this conversation.
+
+✻ Worked for 3s · done 1:34 AM
+
+❯ Write a 600-word essay about ocean tides as
+  plain text. Don't use any tools.
+
+⏺ Ocean tides are the rhythmic rise and fall
+  of sea level, and they are among the most
+  reliable patterns on Earth. Fishermen,
+  sailors, and coastal engineers have tracked
+  them for thousands of years, long before
+  anyone understood what caused them. Today we
+  know that tides are driven mainly by the
+  gravitational pull of the Moon and, to a
+  lesser extent, the Sun, acting on the
+  planet's oceans.
+
+  The basic mechanism is simple to state but
+  subtle in its details. The Moon's gravity
+  pulls on every part of the Earth, but it
+  does
+  ⎿  Interrupted· What should Claude do
+
+──────────────────────────────────────────────
+❯
+──────────────────────────────────────────────
+  Alex │ Haiku 5.5@medium │ ▁ 48.0k/1M 5% │…
+  ⏸ manual mode on

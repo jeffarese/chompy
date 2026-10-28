@@ -1,0 +1,61 @@
+
+(login banner removed from this fixture)
+
+
+[0m[1m[38;2;122;162;247m …/408527a4-0718-4c8f-a71e-4cd891960d0a/scratchpad[0m
+[0m[1m[38;2;122;162;247m/fyi-work[0m 
+[0m[1m[38;2;115;218;202m❯[0m [0m[38;5;2mstty[0m cols 50 rows 24; [0m[4m[38;5;2mcommand[0m [0m[38;5;2mclaude[0m --session-i
+d 383cc86e-1c6c-4491-a71a-8b42d328e26e --model cla
+ude-haiku-5-5
+
+[0m[2mResume this session with:[0m
+[0m[2mclaude --resume 383cc86e-1c6c-4491-a71a-8b42d328e2[0m
+[0m[2m6e[0m
+
+[0m[1m[38;2;122;162;247m…/scratchpad/fyi-work[0m [0m[38;2;154;165;206m3m8s[0m 
+[0m[1m[38;2;115;218;202m❯[0m [0m[38;5;2mclear[0m; CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 [0m[4m[38;5;2mco[0m
+[0m[4m[38;5;2mmmand[0m [0m[38;5;2mclaude[0m --session-id 0214fd2e-faa3-45cb-9b1b-
+0d3b12c83a86 --model claude-haiku-5-5
+[11C[0m[1mClaude[1CCode[1C[0m[38;2;153;153;153mv2.1.311[0m
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█[3C[0m[38;2;153;153;153mHaiku[1C5.5[1Cwith[1Cmedium[1Ceffort[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀[2C[0m[38;2;153;153;153mClaude[1CMax[0m
+[0m[38;2;215;119;87m ▝▝[3C▝▝[3C[0m[38;2;153;153;153m/…/scratchpad/fyi-work[0m
+
+
+[0m[38;2;153;153;153m⏺[0m [0m[38;2;153;153;153mwatchtool: its session.append hook was [0m
+  [0m[38;2;153;153;153mskipped. "example-guard-default" runs [0m
+  [0m[38;2;153;153;153mfirst and sent the event on past it.[0m
+[2C                           [17C[0m[38;2;153;153;153m[-][0m
+[0m[38;2;177;185;249m✦[1C[0m[38;2;153;153;153mYou should know · [0mRelease builds fall[1Cback
+[2Cto[1Cthe debug[1Ckey[1Cwhen[1Ckeystore.properties
+[2Cis[1Cmissing,[1Cso[1Ca[1Cphone[1Cthat[1Chas[1Cthe[1Csigned
+  app will refuse the update.
+  
+  [0m[1mWhy the phone refuses it[0m
+[2CAndroid[1Conly[1Cinstalls[1Can[1Cupdate[1Csigned[1Cwith
+  the same key as the app already on the
+  phone. A debug-signed APK looks[1Clike[1Ca
+  different app, so the install fails with a
+[2Csignature conflict instead of updating.
+[2C[0m[38;2;248;248;242mkeystore.properties ── yes ──▶ release key…[0m
+[2C[0m[38;2;248;248;242m [7C│[0m
+[2C[0m[38;2;248;248;242m [7Cno[0m
+[2C[0m[38;2;248;248;242m [7C▼[0m
+[2C[0m[38;2;248;248;242m [2Cdebug[1Ckey[1C──▶[1C"App[1Cnot[1Cinstalled"[0m
+[2CCheck[1Cthat[1C[0m[38;2;177;185;249mkeystore.properties[1C[0msits[1Cnext[1Cto
+[2C[0m[38;2;177;185;249msettings.gradle.kts[1C[0mbefore[1Cyou[1Cbuild.
+
+[2C[0m[1mWhat[1Cto[1Cdo[0m
+[2CKeep[1C[0m[38;2;177;185;249mkeystore.properties[1C[0mand
+[2C[0m[38;2;177;185;249mrex-mobile-release.jks[1C[0mon[1Cevery[1Cmachine
+[2Cthat[1Cbuilds[1Creleases,[1Cand[1Clook[1Cfor
+[2C[0m[38;2;177;185;249msigningConfig[1Crelease[1C[0min[1Cthe[1Cbuild[1Clog.
+
+[2C[0m[38;2;177;185;249m1[0m:[1CUnderstood[3C[0m[38;2;177;185;249m2[0m:[1CChat[1Cin[1Cmain[1Csession
+[2C[0m[38;2;177;185;249m0[0m:[1CDismiss
+
+[0m[38;2;136;136;136m──────────────────────────────────────────────────[0m
+❯ [0m[2mTry[1C"edit[1C<filepath>[1Cto..."[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────[0m
+[2C[0m[1m[38;5;180mJeff[0m[38;2;153;153;153m [0m[38;5;238m│[0m[38;2;153;153;153m [0m[38;5;78mH[0m[38;5;84ma[0m[38;5;114mi[0m[38;5;120mk[0m[38;5;84mu[0m[38;5;78m [0m[38;5;42m5[0m[38;5;78m.5[0m[38;5;244m@[0m[38;5;80mmedium[0m[38;2;153;153;153m [0m[38;5;238m│[0m[38;2;153;153;153m [0m[38;5;77m▁[1C0[0m[2m[38;5;244m/1M[0m[38;2;153;153;153m [0m[38;5;77m0%[0m[38;2;153;153;153m [1C[0m[38;5;77m ▁[1C0%[0m[38;2;153;153;153m [0m[2m[38;5;244m·1…[0m
+[2C[0m[38;2;255;193;7m⏵⏵[1Cauto[1Cmode[1Con[0m[38;2;153;153;153m (shift+tab[1Cto[1Ccycle)[0m

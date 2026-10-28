@@ -1,0 +1,41 @@
+# cursor_row=36 cursor_col=2 cols=50 rows=40
+
+           Claude Code v2.1.311
+ ▐▛███▛█   Haiku 5.5 with medium effort
+▝▜██████▀  Claude Max
+ ▝▝   ▝▝   /…/scratchpad/fyi-work
+
+
+⏺ watchtool: its session.append hook was
+  skipped. "example-guard-default" runs
+  first and sent the event on past it.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                              [-]
+✦ Dismissed.   1: That was helpful
+  2: Didn’t understand   0: Dismiss
+
+──────────────────────────────────────────────────
+❯ Try "how do I log an error?"
+──────────────────────────────────────────────────
+  Alex │ Haiku 5.5@medium │ ▁ 0/1M 0%   ▁ 0% ·1…
+  ⏵⏵ auto mode on (shift+tab to cycle)

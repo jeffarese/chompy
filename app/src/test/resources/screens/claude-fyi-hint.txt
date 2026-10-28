@@ -1,0 +1,13 @@
+# cursor_row=8 cursor_col=2 cols=167 rows=12
+  0.3.3 that changes only the version.
+
+✻ Cogitated for 2m 17s · done 4:50 AM
+                                                                                                                                                                   [-]
+✦ Heads up · If the update token expires while the releases repo is still private, the app will wrongly say "Up to date", so you won't notice updates stopped.
+  1: Learn more   2: Knew this already   0: Dismiss
+                                                                                                                               new task? /clear to save 178.2k tokens
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── In-app update delivery ─
+❯
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Alex │ Opus 5.5@high │ ▂ 177k/1M 18% │  ▇ 86→105% ⚠20h39   ▁ 0% ·1d3h │  main │ $4.58 +1215/-14
+  ⏵⏵ auto mode on (shift+tab to cycle)

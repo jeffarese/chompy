@@ -1,0 +1,40 @@
+
+[11C[0m[1mClaude Code[1C[0m[38;2;153;153;153mv2.1.311[0m
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█[3C[0m[38;2;153;153;153mHaiku 5.5 with medium effort[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀[2C[0m[38;2;153;153;153mClaude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝ [2C[0m[38;2;153;153;153m/…/scratchpad/fyi-work[0m
+
+
+[0m[38;2;153;153;153m⏺[1Cwatchtool: its session.append hook was [0m
+[2C[0m[38;2;153;153;153mskipped. "example-guard-default" runs [0m
+[2C[0m[38;2;153;153;153mfirst and sent the event on past it.[0m
+
+
+
+
+
+
+
+
+
+
+ [1C[0m[38;2;248;248;242mkeystore.properties ── yes ──▶ release key…[1C[0m[38;2;153;153;153m[-][0m
+ [1C[0m[38;2;248;248;242m        │[0m
+[2C[0m[38;2;248;248;242m        no[0m
+[2C[0m[38;2;248;248;242m        ▼[0m
+[2C[0m[38;2;248;248;242m   debug key ──▶ "App not installed"[0m
+[2CCheck that [0m[38;2;177;185;249mkeystore.properties[0m sits next[1Cto
+[2C[0m[38;2;177;185;249msettings.gradle.kts[0m before you build.
+
+ [1C[0m[1mWhat to do[0m
+[2CKeep [0m[38;2;177;185;249mkeystore.properties[1C[0mand
+[2C[0m[38;2;177;185;249mrex-mobile-release.jks[0m on every[1Cmachine
+[2Cthat builds releases, and look for
+[2C[0m[38;2;177;185;249msigningConfig release[0m in the build[1Clog.
+[0m[38;2;153;153;153m↑ 12 more · ↓ 3 more[0m
+
+[0m[38;2;136;136;136m──────────────────────────────────────────────────[0m
+❯ [0m[2mTry "edit <filepath> to..."[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────[0m
+[2C[0m[1m[38;5;180mJeff[0m[38;2;153;153;153m [0m[38;5;238m│[0m[38;2;153;153;153m [0m[38;5;78mH[0m[38;5;84ma[0m[38;5;114mi[0m[38;5;120mk[0m[38;5;84mu[0m[38;5;78m [0m[38;5;42m5[0m[38;5;78m.5[0m[38;5;244m@[0m[38;5;80mmedium[0m[38;2;153;153;153m [0m[38;5;238m│[0m[38;2;153;153;153m [0m[38;5;77m▁ 0[0m[2m[38;5;244m/1M[0m[38;2;153;153;153m [0m[38;5;77m0%[0m[38;2;153;153;153m  [0m[38;5;77m ▁ 0%[0m[38;2;153;153;153m [0m[2m[38;5;244m·1…[0m
+[2C[0m[38;2;255;193;7m⏵⏵ auto mode on[0m[38;2;153;153;153m (shift+tab to cycle)[0m

@@ -1,0 +1,13 @@
+# cursor_row=8 cursor_col=2 cols=170 rows=12
+
+✢ Prestidigitating… (7m 0s · ↓ 33.8k tokens)
+  ⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's current work
+                                                                                                                                                                      [-]
+✦ Heads up · Claude Code can't make a "You should know" note appear on demand, so the phone's new note buttons will likely be tested only on screens rebuilt by hand.
+  1: Learn more   2: Knew this already   0: Dismiss
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Alex │ Opus 5.5+@xhigh │ ▂ 213k/1M 21% │  ▁ 2→10% ·3h55 │  ▅ 61→85%   ▁ 0% ·1d22h │  main │ $3.57
+  ⏵⏵ auto mode on (shift+tab to cycle)

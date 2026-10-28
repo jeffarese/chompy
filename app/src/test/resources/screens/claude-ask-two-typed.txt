@@ -1,0 +1,31 @@
+# cursor_row=24 cursor_col=0 cols=80 rows=30
+▝▜██████▀  Haiku 4.5 · Claude Max
+ ▝▝   ▝▝   /~/askq
+
+
+⏺ watchtool: its session.append hook was skipped.
+  "example-guard-default" runs first and sent the event on past it.
+
+❯ Use the AskUserQuestion tool once, with two questions: first a single-choice
+  question with header "Colour" asking which of red, green or blue I prefer,
+  then a multiSelect question with header "Fruits" asking which of apple,
+  banana and cherry I like. Short descriptions for each option.
+
+⏺ I'll ask you those two questions using the AskUserQuestion tool.
+────────────────────────────────────────────────────────────────────────────────
+←  ☐ Colour  ☐ Fruits  ✔ Submit  →
+
+Which colour do you prefer?
+
+  1. Red
+     A warm, vibrant colour often associated with energy and passion.
+  2. Green
+     A cool, calming colour often associated with nature and growth.
+  3. Blue
+     A cool, serene colour often associated with the sky and ocean.
+❯ 4. deep purple
+────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Vim · Esc to
+cancel

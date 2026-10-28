@@ -1,0 +1,31 @@
+# cursor_row=26 cursor_col=3 cols=46 rows=30
+
+❯ Run this exact shell command with the Bash
+  tool: date > out2.txt
+✔  Write curren…  5.1s · no output  ▸ details
+
+⏺ I ran date > out2.txt in the working
+  directory. It finished without output, so
+  the file should now contain the current
+  date. I didn't read it back to confirm.
+
+✻ Churned for 2s · done 1:33 AM
+
+❯ Run this exact shell command with the Bash
+  tool: sleep 30
+⊘  Pause for 30 seconds …  not run  ▸ details
+
+⏺ I didn't run sleep 30. The shell blocks
+  standalone foreground sleeps and suggests
+  Monitor or background jobs for waiting.
+  Since you asked for the exact command, tell
+  me if you want me to run it with
+  run_in_background: true instead.
+
+✻ Baked for 2s · done 1:33 AM
+
+──────────────────────────────────────────────
+❯ 1
+──────────────────────────────────────────────
+  Alex │ Haiku 5.5@medium │ ▁ 47.3k/1M 5% │…
+  ⏸ manual mode on

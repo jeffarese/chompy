@@ -1,0 +1,41 @@
+# cursor_row=36 cursor_col=2 cols=50 rows=40
+
+           Claude Code v2.1.311
+ ▐▛███▛█   Haiku 5.5 with medium effort
+▝▜██████▀  Claude Max
+ ▝▝   ▝▝   /…/scratchpad/fyi-work
+
+
+⏺ watchtool: its session.append hook was
+  skipped. "example-guard-default" runs
+  first and sent the event on past it.
+
+
+
+
+
+
+
+
+
+
+  keystore.properties ── yes ──▶ release key… [-]
+          │
+          no
+          ▼
+     debug key ──▶ "App not installed"
+  Check that keystore.properties sits next to
+  settings.gradle.kts before you build.
+
+  What to do
+  Keep keystore.properties and
+  rex-mobile-release.jks on every machine
+  that builds releases, and look for
+  signingConfig release in the build log.
+↑ 12 more · ↓ 3 more
+
+──────────────────────────────────────────────────
+❯ Try "edit <filepath> to..."
+──────────────────────────────────────────────────
+  Alex │ Haiku 5.5@medium │ ▁ 0/1M 0%   ▁ 0% ·1…
+  ⏵⏵ auto mode on (shift+tab to cycle)

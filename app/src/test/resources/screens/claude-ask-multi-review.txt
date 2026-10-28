@@ -1,0 +1,31 @@
+# cursor_row=20 cursor_col=0 cols=46 rows=30
+
+
+⏺ You prefer blue.
+
+✻ Sautéed for 2s · done 1:35 AM
+
+❯ Use the AskUserQuestion tool with
+  multiSelect set to true to ask me which
+  fruits I like: apple, banana, cherry.
+
+──────────────────────────────────────────────
+←  ☒ Fruits  ✔ Submit  →
+
+Review your answers
+
+ ● Which fruits do you like?
+   → Apple, Cherry
+
+Ready to submit your answers?
+
+❯ 1. Submit answers
+  2. Cancel
+
+
+
+
+
+
+
+

@@ -1,0 +1,536 @@
+{
+ "_about": "Each glyph: its source set and icon, and the card it sits on. bg 'auto' takes the brand colour from the source's colour variant. colored glyphs keep their own colours on the card.",
+ "amp": {
+  "src": "lobe",
+  "id": "amp",
+  "bg": "auto:amp-color"
+ },
+ "antigravity": {
+  "src": "lobe",
+  "id": "antigravity",
+  "bg": "auto:antigravity-color"
+ },
+ "apple-container": {
+  "src": "lucide",
+  "id": "container",
+  "bg": "#777B8F"
+ },
+ "azure": {
+  "src": "lobe",
+  "id": "azure",
+  "bg": "#0078D4"
+ },
+ "bash": {
+  "src": "si",
+  "id": "gnubash"
+ },
+ "bat": {
+  "src": "si",
+  "id": "bat"
+ },
+ "bazel": {
+  "src": "si",
+  "id": "bazel"
+ },
+ "boundary": {
+  "src": "lucide",
+  "id": "shield-check",
+  "bg": "#EC585D"
+ },
+ "brew": {
+  "src": "si",
+  "id": "homebrew"
+ },
+ "browser": {
+  "src": "lucide",
+  "id": "compass",
+  "bg": "#00A3E0"
+ },
+ "btop": {
+  "src": "project",
+  "file": "sources/btop/icon.svg",
+  "bg": "#1E0A08",
+  "colored": true
+ },
+ "buck": {
+  "src": "logos",
+  "id": "buck",
+  "bg": "#FFFFFF",
+  "colored": true
+ },
+ "buildkite": {
+  "src": "si",
+  "id": "buildkite"
+ },
+ "bun": {
+  "src": "si",
+  "id": "bun"
+ },
+ "butler": {
+  "src": "si",
+  "id": "itchdotio"
+ },
+ "caffeinate": {
+  "src": "lucide",
+  "id": "coffee",
+  "bg": "#8B5A3C"
+ },
+ "clang": {
+  "src": "si",
+  "id": "llvm"
+ },
+ "claude": {
+  "src": "si",
+  "id": "claude"
+ },
+ "cloudflare": {
+  "src": "si",
+  "id": "cloudflare"
+ },
+ "coder": {
+  "src": "si",
+  "id": "coder"
+ },
+ "codex": {
+  "src": "lobe",
+  "id": "codex",
+  "bg": "#111111"
+ },
+ "consul": {
+  "src": "si",
+  "id": "consul"
+ },
+ "copilot": {
+  "src": "si",
+  "id": "githubcopilot"
+ },
+ "crush": {
+  "src": "lucide",
+  "id": "heart",
+  "bg": "#6B50FF"
+ },
+ "cursor": {
+  "src": "si",
+  "id": "cursor"
+ },
+ "d2": {
+  "src": "project",
+  "file": "sources/d2/logo.svg",
+  "bg": "#FFFFFF",
+  "colored": true
+ },
+ "dart": {
+  "src": "si",
+  "id": "dart"
+ },
+ "datadog": {
+  "src": "si",
+  "id": "datadog"
+ },
+ "devin": {
+  "src": "lobe",
+  "id": "devin",
+  "bg": "auto:devin-color"
+ },
+ "docker": {
+  "src": "si",
+  "id": "docker"
+ },
+ "dotnet": {
+  "src": "si",
+  "id": "dotnet"
+ },
+ "droid": {
+  "src": "lucide",
+  "id": "factory",
+  "bg": "#000000"
+ },
+ "elixir": {
+  "src": "si",
+  "id": "elixir"
+ },
+ "emacs": {
+  "src": "si",
+  "id": "gnuemacs"
+ },
+ "expo": {
+  "src": "si",
+  "id": "expo"
+ },
+ "fish": {
+  "src": "si",
+  "id": "fishshell"
+ },
+ "flutter": {
+  "src": "si",
+  "id": "flutter"
+ },
+ "fx": {
+  "src": "lucide",
+  "id": "braces",
+  "bg": "#1E1E1E",
+  "fg": "#F5C542"
+ },
+ "gemini": {
+  "src": "si",
+  "id": "googlegemini"
+ },
+ "git": {
+  "src": "si",
+  "id": "git"
+ },
+ "gitchanges": {
+  "src": "lucide",
+  "id": "diff",
+  "bg": "#3FB950"
+ },
+ "github": {
+  "src": "si",
+  "id": "github"
+ },
+ "gitlab": {
+  "src": "si",
+  "id": "gitlab"
+ },
+ "gnu": {
+  "src": "si",
+  "id": "gnu"
+ },
+ "go": {
+  "src": "si",
+  "id": "go"
+ },
+ "grok": {
+  "src": "lobe",
+  "id": "grok",
+  "bg": "#000000"
+ },
+ "heroku": {
+  "src": "logos",
+  "id": "heroku-icon",
+  "bg": "#FFFFFF",
+  "colored": true
+ },
+ "homey": {
+  "src": "project",
+  "file": "sources/homey/homey-logo.png",
+  "bg": "#FFFFFF",
+  "colored": true
+ },
+ "htop": {
+  "src": "si",
+  "id": "htop"
+ },
+ "hugging-face": {
+  "src": "si",
+  "id": "huggingface"
+ },
+ "hunk": {
+  "src": "project",
+  "file": "sources/hunk/logo-mark.svg",
+  "bg": "#2B2D31"
+ },
+ "hx": {
+  "src": "si",
+  "id": "helix"
+ },
+ "inspector": {
+  "src": "lucide",
+  "id": "scan-search",
+  "bg": "#366FFF"
+ },
+ "jj": {
+  "src": "project",
+  "file": "sources/jj/jj-logo.svg",
+  "bg": "#A9BEDD",
+  "colored": true
+ },
+ "jupyter": {
+  "src": "si",
+  "id": "jupyter"
+ },
+ "k9s": {
+  "src": "project",
+  "file": "sources/k9s/k9s.png",
+  "bg": "#FFFFFF",
+  "colored": true
+ },
+ "kakoune": {
+  "src": "project",
+  "file": "sources/kakoune/kakoune_logo.svg",
+  "bg": "#1E1E1E",
+  "colored": true
+ },
+ "kiro": {
+  "src": "lobe",
+  "id": "kiro",
+  "bg": "auto:kiro-color"
+ },
+ "kube": {
+  "src": "si",
+  "id": "kubernetes"
+ },
+ "llama-cpp": {
+  "src": "project",
+  "file": "sources/llama-cpp/logo.svg",
+  "bg": "#1F1F1F"
+ },
+ "log": {
+  "src": "lucide",
+  "id": "scroll-text",
+  "bg": "#5B6770"
+ },
+ "mastra": {
+  "src": "lobe",
+  "id": "mastra",
+  "bg": "#000000"
+ },
+ "meta": {
+  "src": "si",
+  "id": "meta"
+ },
+ "minimal": {
+  "src": "lucide",
+  "id": "square-terminal",
+  "bg": "#2B2D31"
+ },
+ "mistral": {
+  "src": "lobe",
+  "id": "mistral",
+  "bg": "#FA520F"
+ },
+ "modal": {
+  "src": "si",
+  "id": "modal"
+ },
+ "mole": {
+  "src": "lucide",
+  "id": "shovel",
+  "bg": "#8B6F47"
+ },
+ "moon": {
+  "src": "si",
+  "id": "moonrepo"
+ },
+ "neovim": {
+  "src": "si",
+  "id": "neovim"
+ },
+ "nextflow": {
+  "src": "si",
+  "id": "nextflow"
+ },
+ "nix": {
+  "src": "si",
+  "id": "nixos"
+ },
+ "node": {
+  "src": "si",
+  "id": "nodedotjs"
+ },
+ "nomad": {
+  "src": "si",
+  "id": "nomad"
+ },
+ "nushell": {
+  "src": "si",
+  "id": "nushell"
+ },
+ "ollama": {
+  "src": "si",
+  "id": "ollama"
+ },
+ "openclaw": {
+  "src": "lobe",
+  "id": "openclaw",
+  "bg": "auto:openclaw-color"
+ },
+ "opencode": {
+  "src": "si",
+  "id": "opencode"
+ },
+ "oxide": {
+  "src": "lucide",
+  "id": "server",
+  "bg": "#48D597",
+  "fg": "#0B1F14"
+ },
+ "packer": {
+  "src": "si",
+  "id": "packer"
+ },
+ "php": {
+  "src": "si",
+  "id": "php"
+ },
+ "pi": {
+  "src": "si",
+  "id": "pi"
+ },
+ "pnpm": {
+  "src": "si",
+  "id": "pnpm"
+ },
+ "podman": {
+  "src": "si",
+  "id": "podman"
+ },
+ "poolside-icon": {
+  "src": "lobe",
+  "id": "poolside",
+  "bg": "auto:poolside-color"
+ },
+ "postgres": {
+  "src": "si",
+  "id": "postgresql"
+ },
+ "prime-agent": {
+  "src": "lucide",
+  "id": "bot",
+  "bg": "#111111"
+ },
+ "proto": {
+  "src": "project",
+  "file": "sources/proto/icon-vector.svg",
+  "bg": "#6F53F3"
+ },
+ "proton-drive": {
+  "src": "si",
+  "id": "protondrive"
+ },
+ "proton-pass": {
+  "src": "si",
+  "id": "proton",
+  "bg": "#6D4AFF"
+ },
+ "python": {
+  "src": "si",
+  "id": "python"
+ },
+ "railway": {
+  "src": "si",
+  "id": "railway"
+ },
+ "rclone": {
+  "src": "si",
+  "id": "rclone"
+ },
+ "render": {
+  "src": "si",
+  "id": "render"
+ },
+ "rex": {
+  "src": "lucide",
+  "id": "panels-top-left",
+  "bg": "#2B2D31"
+ },
+ "ruby": {
+  "src": "si",
+  "id": "ruby"
+ },
+ "rust": {
+  "src": "si",
+  "id": "rust"
+ },
+ "sanity": {
+  "src": "si",
+  "id": "sanity"
+ },
+ "shopify": {
+  "src": "si",
+  "id": "shopify"
+ },
+ "sleep": {
+  "src": "lucide",
+  "id": "moon-star",
+  "bg": "#3C3F8F"
+ },
+ "sqlite": {
+  "src": "si",
+  "id": "sqlite"
+ },
+ "stripe": {
+  "src": "si",
+  "id": "stripe"
+ },
+ "swift": {
+  "src": "si",
+  "id": "swift"
+ },
+ "tailscale": {
+  "src": "si",
+  "id": "tailscale"
+ },
+ "task": {
+  "src": "si",
+  "id": "task"
+ },
+ "terminal": {
+  "src": "lucide",
+  "id": "terminal",
+  "bg": "#2B2D31"
+ },
+ "terraform": {
+  "src": "si",
+  "id": "terraform"
+ },
+ "top": {
+  "src": "lucide",
+  "id": "activity",
+  "bg": "#2B2D31",
+  "fg": "#98E491"
+ },
+ "uv": {
+  "src": "si",
+  "id": "uv"
+ },
+ "vagrant": {
+  "src": "si",
+  "id": "vagrant"
+ },
+ "vakna": {
+  "src": "lucide",
+  "id": "sunrise",
+  "bg": "#F59E0B"
+ },
+ "vault": {
+  "src": "si",
+  "id": "vault"
+ },
+ "vercel": {
+  "src": "si",
+  "id": "vercel"
+ },
+ "vim": {
+  "src": "si",
+  "id": "vim"
+ },
+ "vite": {
+  "src": "si",
+  "id": "vite"
+ },
+ "vite-plus": {
+  "src": "si",
+  "id": "vite"
+ },
+ "waypoint": {
+  "src": "logos",
+  "id": "waypoint-icon",
+  "bg": "#FFFFFF",
+  "colored": true
+ },
+ "yazi": {
+  "src": "project",
+  "file": "sources/yazi/logo.png",
+  "bg": "#1E1E1E",
+  "colored": true
+ },
+ "zig": {
+  "src": "si",
+  "id": "zig"
+ },
+ "zsh": {
+  "src": "si",
+  "id": "zsh"
+ }
+}

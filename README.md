@@ -1,0 +1,226 @@
+# Chompy, a client for Rex
+
+<p align="center"><img src="art/preview/logo-B.png" width="128" alt="Chompy: a robot T-rex's head in a sunset gradient, grinning, on dark plum."></p>
+
+An unofficial Android client for [Rex](https://www.superlogical.com), Superlogical's multiplexer.
+It shows what your agents are doing on every machine at once, and opens a real terminal,
+running the same engine as the Rex server, when one of them needs you.
+
+<p align="center">
+  <img src="docs/media/agent-board.gif" width="320" alt="Six agents start on a Rex server, each with a dot in its group's colour. The board sorts them as they report: two Claude Code agents need you, Terraform finishes, Cargo's tests fail. A tap on the Claude that asks which queue to use opens its terminal, where its question shows as a card and a tap answers it. The other Claude wants to run the tests; a tap on Yes in its card allows it. Once they pass, Claude leaves a note that shows as a card too: Learn more opens its explanation and Understood puts it away.">
+</p>
+<p align="center"><sub>
+  35 seconds, unedited, on an emulator (<a href="docs/media/agent-board.mp4">MP4, 720p</a>).
+  The agents are scripts that report with OSC 7501; the server, the app and the taps are real.
+  <a href="docs/demo">How it was recorded.</a>
+</sub></p>
+
+## On a phone, the agents come first
+
+A phone is a poor place to type into a terminal and a good place to keep an eye on work. So Home
+opens on a board of every agent on every host, ordered by what needs a person, with the tabs below
+it. The board is hidden until some program reports a status, so a host with none looks the same as
+before.
+
+| Group | What is in it | Leaves when |
+|---|---|---|
+| **Needs you** | Blocked agents, with what they want: permission, a question or a password. Also a bell or notification with no status. Longest waiting first. | It's answered |
+| **Failed** | Agents that report `error`, newest first | You've looked |
+| **Done** | Agents that report `done`, newest first | You've looked |
+| **Working** | Running agents, with progress when they report it | They stop |
+
+A tap opens the terminal at that exact pane, where you answer the question and go back.
+
+The board follows the [OSC 7501 program status protocol](https://www.superlogical.com/rex/docs/build/program-status)
+rather than guessing from the screen:
+
+- **A status comes from the program.** `state`, `kind`, `progress`, `title` and `msg` come from the
+  program itself. Nothing reads spinners off the screen or diffs output to decide what an agent is
+  doing.
+- **Done means "waiting for review".** The spec keeps `done` and `error` until the user has seen
+  them. The app remembers, per pane, the last result you looked at. An agent that finished while
+  the phone was asleep, offline or not yet started still shows as new, and one you've opened stays
+  seen after a restart.
+- **Subtasks belong to their agent.** Records such as `build` and `build/test` under a root record
+  show as lines under it, nested by depth. Only the agent's own state raises a banner or a
+  notification, so a finished build step doesn't.
+- **Every card says where it runs.** The title and message come from the program. The session and
+  folder under them come from the host, so one program can't pass for an agent in another terminal.
+- **Cards keep their place.** Working agents are ordered by name, not by their last report, so
+  progress doesn't reshuffle them. A card that changes group slides there, and the tab list below
+  moves with it.
+- **A host that drops out is shown as unreachable.** Its tabs fade with the reason, and its agents
+  leave the board instead of claiming to still be working.
+
+<p align="center">
+  <img src="docs/media/board.png" width="250" alt="The board: Claude asking to run the tests under Needs you, a failed test run with its subtasks, a finished Terraform plan and three agents working.">
+  <img src="docs/media/answer.png" width="250" alt="The terminal opened on the Claude that wants permission, with its menu as a card: Yes, Yes and don't ask again, or No.">
+  <img src="docs/media/note.png" width="250" alt="Once the tests pass, Claude leaves a note, shown as a card: what happened, why, and what to do.">
+</p>
+
+## The terminal is the server's terminal
+
+The phone runs [libghostty-vt](https://github.com/ghostty-org/ghostty) at the same Ghostty commit as
+the Rex server ([`GHOSTTY_COMMIT`](terminal/native/GHOSTTY_COMMIT)), through a small JNI bridge
+([`rexterm.c`](terminal/src/main/cpp/rexterm.c)) under Termux's view. The phone and the server parse
+the same bytes with the same code, and a fresh stream restores the server's own Ghostty snapshot
+instead of redrawing it.
+
+Keys go through libghostty-vt's key encoder too, set from the modes the program has turned on. A
+program that uses the Kitty keyboard protocol, as Claude Code does, gets keys in that form, so
+Shift+Enter (the key bar's shift, then ⏎) starts a new line instead of sending the message. A shell
+gets the bytes it always has. The phone sends what Ghostty on the desktop would.
+
+Measured on an emulator and against a live server ([full results](docs/perf/results.md)):
+
+| | |
+|---|---:|
+| First screen of a pane with 14,000 lines of history, over a 48 KB/s link | 1.5 s |
+| Rows that differ from the server's screen, on a corpus of hard cases | 0 of 26 |
+| Modes that differ from the server's, Kitty keyboard flags included | 0 |
+| Parsing Unicode-heavy output, on the emulator | 100 MB/s |
+| Parsing plain ASCII, on the emulator | 124 MB/s |
+| 14,000 rows of 150-column history | 6.7 MB, compressed, outside the Java heap |
+
+Scrolling happens on the phone. History is local, so a drag needs no network and no repaint from
+the host. Claude Code's fullscreen renderer keeps no history, so scrolling it means sending wheel
+events and waiting for Claude to redraw. Measured live, that trails the finger by 0.5 to 3.5 lines.
+When the phone sees fullscreen Claude, it offers to resume that one conversation in the classic
+renderer, keeping its mode and effort and leaving your settings alone. Measured the same way, the
+classic renderer stays within 0.03 lines of the finger.
+
+### Why part of Termux is still here
+
+Everything that decides what the terminal holds or sends is Ghostty's: parsing, the screen and
+its history, modes, and keys. What's left of [Termux](https://github.com/termux/termux-app)
+(v0.118.1, Apache 2.0) is the Android side, about 3,200 lines: the view that draws the cells on a
+`Canvas`, its touch gestures and scrolling, the soft keyboard connection, and text selection.
+
+That part stays because libghostty-vt doesn't draw. It holds a terminal's state and hands it to a
+renderer of the app's own. Ghostty's renderers are part of the Ghostty app: Metal on macOS, and
+OpenGL 4.3 on Linux, which Android's OpenGL ES isn't. Without one, an Android app needs its own
+view, and Termux's is well tried on phones and their keyboards. If libghostty offers a renderer an
+Android app can use, the view can go too. [`terminal/NOTICE.md`](terminal/NOTICE.md) lists what
+changed from Termux.
+
+## Made for the networks phones are actually on
+
+Most of the work went into links that are slow or flaky, or that change mid-stream:
+
+- **Slow links don't drop streams.** On mobile data, a long conversation never loaded: while the
+  server pushed a 2.35 MB snapshot, its answer to the phone's ping waited behind it and missed the
+  deadline. The server then dropped the stream, and every retry started again from zero. Data
+  connections no longer send pings; the server sends its own. `LiveSlowLinkTest` streams 3 MB at
+  10 KB/s and stays live.
+- **The screen comes before the history.** If a fresh stream's snapshot hasn't finished after a
+  second, the app reads the current screen over the control connection, which is compressed, and
+  shows it while the history catches up: 1.5 s instead of 28 s at 48 KB/s.
+- **Input waits until the screen is current.** Keys and Send are held, dimmed, while a pane is
+  loading or its host is away, so nothing is typed into a screen you can't see.
+- **A network change is noticed at once.** Moving from Wi-Fi to cellular checks every host
+  immediately instead of waiting for a ping to fail.
+- **Coming back is instant.** Live streams survive a switch away and back. After a longer absence,
+  terminals keep their last screen while the stream resumes (the server holds it for 60 s).
+- **Events missed while away are recovered.** After a reconnect, every pane's status, title,
+  process and folder is read again, and a change that happened meanwhile alerts as if it had been
+  seen live.
+- **Settings › Connection keeps a log of each return**: how long the app was away, which hosts
+  answered, and how each terminal came back.
+
+## Native to Android
+
+Built with Jetpack Compose and Material 3. Where Android has its own way of doing something, the
+app uses it:
+
+- Notifications for agents that need you, finish or fail, through a foreground service you opt into
+  (Settings › Alerts). Each one opens its pane, and the Settings page says when notification
+  permission or battery limits would stop them.
+- Back closes search before it leaves the app, and a quick double tap opens one screen, not two.
+- Pairing scans the code from `rex server tailscale pair`, and checks Tailscale is up before trying
+  a tailnet address.
+- Shell panes get a keyboard without autocapitalisation or autocorrect. A key bar with sticky Shift
+  and arrows can be rearranged in Settings, as can Claude's strip.
+- The system's own copy confirmation on Android 13 and later, and landscape layouts that keep clear
+  of cutouts.
+- Updates come from the app's own GitHub releases. A download installs only if its SHA-256 matches,
+  it is Chompy, it is newer, and it is signed with the same key.
+
+Each program in a tab shows its own logo on its brand's color, from [Simple Icons](https://simpleicons.org)
+(CC0), [Lobe Icons](https://github.com/lobehub/lobe-icons) (MIT) and [Iconify's logos](https://github.com/gilbarbara/logos)
+(CC0) or the project's own repository, with [Lucide](https://lucide.dev) (ISC) glyphs for generic
+programs and ones whose logo isn't free to use ([`art/glyphs`](art/glyphs) lists each one's source). Settings › Look has all 41 of Rex's themes.
+
+## Measured, not assumed
+
+The claims above come from tests that run against a real Rex server, not a mock:
+
+- **Benchmarks.** [The results](docs/perf/results.md): load times over three link speeds and three
+  history sizes, fidelity against the server's own screen and modes, and parsing, drawing and
+  memory on a device.
+- **Live tests.** Each one opens throwaway sessions on a real server and destroys them after:
+  slow links, compressed streams, early screens, pausing on return, prompts, scrolling under Claude
+  and the full UI. They are skipped unless `REX_LIVE_HOST` is set.
+- **Unit tests.** About 350 tests in all, live ones included. Among them: the board's grouping and
+  order, agents that finished while the app was away, and subtasks that must not alert.
+
+```sh
+./gradlew :app:testDebugUnitTest                                              # unit tests
+REX_LIVE_HOST=<your-host>.ts.net ./gradlew :app:testDebugUnitTest --rerun     # plus the live ones
+scripts/bench-engine.sh                                                       # engine benchmarks on the emulator
+```
+
+## What it doesn't do yet
+
+- **arm64 only.** libghostty-vt is built for `arm64-v8a`, which nearly every current phone is.
+- **Notifications aren't rate-limited.** OSC 7501 recommends limiting what a record can cause outside
+  the terminal. An agent flipping between states quickly would notify each time.
+- **Two style details differ from the server.** An underline's own color and OSC 8 hyperlinks
+  aren't drawn yet ([fidelity results](docs/perf/results.md#2-fidelity)).
+- **Kitty images aren't drawn.** The engine keeps Kitty graphics images, but the view doesn't draw
+  them yet.
+- **Keys report presses only.** Soft keyboards don't tell an app when a key is let go, and the
+  phone doesn't send a hardware keyboard's releases either, so a program that asks the Kitty
+  protocol for release events doesn't get them.
+- **Answering happens in the terminal.** A card opens the pane and you answer there. OSC 7501 says
+  what an agent is waiting for, not what the choices are.
+- **Releases are private for now.** Builds update from a private repository.
+
+## Building
+
+You need JDK 21 and the Android SDK (API 35, NDK 30). The native library is checked in, so Zig is
+only needed to rebuild it (`scripts/build-libghostty.sh`).
+
+```sh
+./gradlew :app:assembleDebug
+```
+
+Optional settings live in `local.properties`, which is not committed:
+
+| Key | What it does |
+|---|---|
+| `rex.defaultHosts` | Hosts offered on first launch, as `Label=address,Label=address`. A build can also pass `-Prex.defaultHosts=...`. |
+| `rex.updateRepo`, `rex.updateToken` | Where release builds look for updates, and a read-only token while that repository is private |
+
+Release signing comes from `keystore.properties`. Without it, release builds are signed with the
+debug key, so they still install.
+
+## Where things are
+
+| Path | What's there |
+|---|---|
+| `app/src/main/java/.../model` | Connections to hosts (`HostConnection`), the app's state, alerts, updates, and which results you've seen (`Reviewed`) |
+| `app/src/main/java/.../rex` | The Rex protocol, as each server documents it at `/api/help` and `/llms.txt`: control and data connections, the stream parser |
+| `app/src/main/java/.../terminal` | The remote terminal: streams, snapshots, input, reading prompts off the screen |
+| `app/src/main/java/.../ui` | Compose screens: Home and the board, the terminal, Settings, onboarding |
+| `terminal/` | The terminal view, from Termux, over libghostty-vt: the JNI bridge, the native library, and Android's keys as Ghostty's |
+| `docs/perf`, `docs/demo` | The benchmark harness and [results](docs/perf/results.md); how the demo video was made |
+| `scripts/` | Building libghostty, benchmarks, publishing releases |
+
+Copyright 2026 Jeff Arese. Chompy's own code is under the [Apache License 2.0](LICENSE);
+[`terminal/NOTICE.md`](terminal/NOTICE.md) lists what it builds on and their licenses.
+
+Chompy is unofficial: it isn't affiliated with or endorsed by Superlogical, and uses Rex's public API.
+Rex belongs to Superlogical, and each program's logo to its owner. Jujutsu's logo is copyright 2025
+J. Jennings, SVG by Lucas Garron, under CC BY 4.0. Chompy's style borrows from the
+Android robot, which is reproduced or modified from work created and shared by Google and used
+according to terms described in the Creative Commons 3.0 Attribution License.
