@@ -307,7 +307,8 @@ class AppModel(
                 existing?.disconnect()
                 HostConnection(
                     cfg, http, scope, onMoved = { url -> hostStore.update(cfg.copy(url = url)) },
-                    reviewed = Reviewed(reviewedPrefs, cfg.id), onAlert = ::onAlert,
+                    reviewed = Reviewed(reviewedPrefs, cfg.id),
+                    away = { !foreground }, hasNetwork = { networkWatch.connected }, onAlert = ::onAlert,
                 )
                     .also { if (foreground || settings.watchInBackground.value) it.connect() }
             }
@@ -406,20 +407,25 @@ class AppModel(
         }
 
     /**
-     * Main thread. The phone moved to another network, such as from Wi-Fi to cellular: a connection
-     * made over the old one can sit dead until its next ping fails, so each is checked now, and a
-     * stream waiting to retry tries at once.
+     * Main thread. The phone moved to another network, such as from Wi-Fi to cellular, or has one
+     * again: a connection made over the old one can sit dead until its next ping fails, so each is
+     * checked now, one that is down tries at once, and a stream waiting to retry tries at once too.
+     *
+     * Away, watching keeps the control connections, which are checked the same way so a host's alerts
+     * don't wait a minute for its pings. Terminals are paused then and are left to the return.
      */
     private fun onNetworkChanged(now: String) {
-        if (!foreground) return
-        val retried = terminals.values.filter { !it.paused && it.streamState.value != StreamState.LIVE }
+        val away = !foreground
+        if (away && !settings.watchInBackground.value) return
+        val retried = if (away) emptyList() else terminals.values.filter { !it.paused && it.streamState.value != StreamState.LIVE }
         retried.forEach { it.reconnectNow() }
         val hosts = checkHosts { host -> terminals.values.filter { it.host === host && !it.paused } }
         val at = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
         scope.launch {
             val lines = hosts.map { "  " + (withTimeoutOrNull(RETURN_WATCH_MS) { it.await() } ?: "no answer") }
             val streams = if (retried.isEmpty()) emptyList() else listOf("  ${retried.size} waiting stream(s) retried at once")
-            val entry = (listOf("$at  network changed to $now") + lines + streams).joinToString("\n")
+            val header = "$at  network changed to $now" + if (away) " while away" else ""
+            val entry = (listOf(header) + lines + streams).joinToString("\n")
             withContext(Dispatchers.IO) { returnLog.add(entry) }
         }
     }

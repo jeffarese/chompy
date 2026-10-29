@@ -4,6 +4,8 @@ import android.app.Application
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Looper
 import com.jeffarese.rexmobile.WatchService
 import kotlinx.serialization.json.buildJsonObject
@@ -24,6 +26,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowNetwork
+import org.robolectric.shadows.ShadowNetworkCapabilities
 import java.time.Duration
 
 /** The app's terminals across returns to the app and changes to the hosts, against a fake server. */
@@ -158,6 +162,61 @@ class AppModelTest {
         waitFor("disconnected") { host.state.value.status == ConnStatus.IDLE }
         assertTrue(shadowOf(context.getSystemService(NotificationManager::class.java)).allNotifications.isEmpty())
     }
+
+    @Test
+    fun whileWatchingANetworkChangeChecksTheHostsAndRetriesOneThatIsDownAtOnce() {
+        model.settings.watchInBackground.value = true
+        model.settings.stayConnectedSeconds.value = 0
+        model.onForeground()
+        val host = host()
+        waitFor("online") { host.state.value.status == ConnStatus.ONLINE }
+        model.onBackground()
+        pump(300)
+        val network = networkCallback()
+        network.onCapabilitiesChanged(wifi, caps(NetworkCapabilities.TRANSPORT_WIFI))
+
+        network.onCapabilitiesChanged(cellular, caps(NetworkCapabilities.TRANSPORT_CELLULAR))
+        waitFor("the check") { rex.count("server.version") == 1 }
+        waitFor("the log entry") { model.returnLog.read()?.contains("network changed to cellular while away") == true }
+
+        // Down and waiting 4 s to try again, it tries at once.
+        val tries = java.util.concurrent.atomic.AtomicInteger()
+        rex.refuses = { tries.incrementAndGet(); true }
+        rex.controls.last().drop()
+        waitFor("four tries") { tries.get() == 4 }
+        pump(200)
+        network.onCapabilitiesChanged(wifi, caps(NetworkCapabilities.TRANSPORT_WIFI))
+        waitFor("a try at once", timeoutMs = 1_500) { tries.get() == 5 }
+    }
+
+    @Test
+    fun withoutANetworkNoHostIsTriedUntilOneIsBack() {
+        model.onForeground()
+        val host = host()
+        waitFor("online") { host.state.value.status == ConnStatus.ONLINE }
+        val network = networkCallback()
+        network.onCapabilitiesChanged(wifi, caps(NetworkCapabilities.TRANSPORT_WIFI))
+
+        network.onLost(wifi)
+        rex.controls.last().drop()
+        waitFor("no network") { host.state.value.error == "No network" }
+        pump(2_000)
+        assertEquals(1, rex.controls.size)
+
+        network.onCapabilitiesChanged(cellular, caps(NetworkCapabilities.TRANSPORT_CELLULAR))
+        waitFor("online again", timeoutMs = 2_000) { host.state.value.status == ConnStatus.ONLINE }
+        assertEquals(2, rex.controls.size)
+    }
+
+    private val wifi = ShadowNetwork.newInstance(1)
+    private val cellular = ShadowNetwork.newInstance(2)
+
+    private fun caps(transport: Int): NetworkCapabilities =
+        ShadowNetworkCapabilities.newInstance().also { shadowOf(it).addTransportType(transport) }
+
+    /** The app's own, as Android would call it. */
+    private fun networkCallback(): ConnectivityManager.NetworkCallback =
+        shadowOf(context.getSystemService(ConnectivityManager::class.java)).networkCallbacks.single()
 
     /** Robolectric runs the main looper only when told, so keep it going while real time passes. */
     private fun pump(ms: Long) {

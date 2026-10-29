@@ -19,6 +19,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class HostConnectionTest {
     private val rex = FakeRex("b1", "b2")
@@ -250,6 +252,54 @@ class HostConnectionTest {
         assertEquals(Liveness.SILENT, result.get())
         waitFor("a new connection") { rex.controls.size == 2 }
         stuck.join(5_000)
+    }
+
+    @Test
+    fun retriesWaitLongerWhileAwayUpToFiveMinutes() {
+        val inApp = (0..20).map { HostConnection.retryWait(it, away = false) }
+        val away = (0..20).map { HostConnection.retryWait(it, away = true) }
+        assertEquals(listOf(500L, 1_000L, 2_000L, 4_000L, 8_000L, 15_000L, 15_000L), inApp.take(7))
+        assertEquals(15_000L, inApp.max())
+        assertEquals(inApp.take(5), away.take(5))
+        assertEquals(listOf(16_000L, 32_000L, 64_000L, 128_000L, 256_000L, 300_000L), away.subList(5, 11))
+        assertEquals(300_000L, away.max())
+    }
+
+    @Test
+    fun aCheckTriesAtOnceAndStartsAgainFromTheShortestWait() {
+        val tries = AtomicInteger()
+        rex.refuses = { tries.incrementAndGet(); true }
+        host.connect()
+        // At 0, 0.5, 1.5 and 3.5 s: the next would come 4 s later.
+        waitFor("four tries") { tries.get() == 4 }
+        Thread.sleep(200)
+        host.ensureAlive()
+        // At once, then half a second later.
+        waitFor("two more tries", timeoutMs = 2_500) { tries.get() == 6 }
+    }
+
+    @Test
+    fun noAttemptIsMadeWithoutANetwork() {
+        val network = AtomicBoolean(true)
+        val other = HostConnection(HostConfig(label = "fake", url = "https://fake.test"), rex, scope, hasNetwork = { network.get() }) {}
+        try {
+            other.connect()
+            waitFor("online") { other.state.value.status == ConnStatus.ONLINE }
+            network.set(false)
+            rex.controls.last().drop()
+            waitFor("offline without a network") { other.state.value.let { it.status == ConnStatus.OFFLINE && it.error == "No network" } }
+            // Past the first few waits.
+            Thread.sleep(2_000)
+            assertEquals(1, rex.controls.size)
+
+            // The owner checks it once a network is back.
+            network.set(true)
+            other.ensureAlive()
+            waitFor("online again", timeoutMs = 2_000) { other.state.value.status == ConnStatus.ONLINE }
+            assertEquals(2, rex.controls.size)
+        } finally {
+            other.disconnect()
+        }
     }
 
     private fun waitFor(what: String, timeoutMs: Long = 10_000, done: () -> Boolean) {

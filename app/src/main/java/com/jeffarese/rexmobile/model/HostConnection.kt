@@ -135,6 +135,13 @@ class HostConnection(
     private val onMoved: (String) -> Unit = {},
     /** Which finished and failed agents the person has seen, so one that ended while away still shows as new. */
     private val reviewed: Reviewed = Reviewed(),
+    /** Whether the app is away, where a host that can't be reached is tried less and less often: see [retryWait]. */
+    private val away: () -> Boolean = { false },
+    /**
+     * Whether the phone has a network at all. Without one no attempt is made: the owner checks the
+     * host with [ensureAlive] once one is back.
+     */
+    private val hasNetwork: () -> Boolean = { true },
     private val onAlert: (Alert) -> Unit,
 ) {
     private val serial = Dispatchers.Default.limitedParallelism(1)
@@ -197,8 +204,8 @@ class HostConnection(
     }
 
     /**
-     * Check the connection is alive, reconnecting at once if it isn't. [answered] hears how the check
-     * went and how long it took.
+     * Check the connection is alive, reconnecting at once if it isn't, with the wait between attempts
+     * back to its shortest. [answered] hears how the check went and how long it took.
      *
      * On a slow link the answer can wait behind a large reply still on its way, such as part of a
      * redraw, so a connection that is still receiving, or still owes answers, is kept: its pings
@@ -236,6 +243,10 @@ class HostConnection(
         if (!wanted) return
         if (conn?.let { !it.isOpen && _state.value.status == ConnStatus.CONNECTING } == true) return
         if (conn?.isOpen == true) return
+        if (!hasNetwork()) {
+            _state.update { it.copy(status = ConnStatus.OFFLINE, error = "No network") }
+            return
+        }
         _state.update { it.copy(status = ConnStatus.CONNECTING) }
         lateinit var c: ControlConnection
         c = ControlConnection(client, urls[urlIndex], object : ControlListener {
@@ -317,7 +328,7 @@ class HostConnection(
         if (wanted) _drops.update { it + 1 }
         _state.update { it.copy(status = if (wanted) ConnStatus.OFFLINE else ConnStatus.IDLE, error = reason.takeIf { r -> r.isNotBlank() && wanted }) }
         if (!wanted) return
-        val wait = minOf(15_000L, 500L shl minOf(attempts, 5))
+        val wait = retryWait(attempts, away())
         attempts++
         reconnectJob?.cancel()
         reconnectJob = scope.launch(serial) {
@@ -667,7 +678,16 @@ class HostConnection(
         }
     }
 
-    private companion object {
-        const val TAG = "HostConnection"
+    companion object {
+        private const val TAG = "HostConnection"
+
+        /**
+         * How long to wait before the next attempt after [attempts] failed ones: up to 15 s in the app.
+         * While away, such as overnight beside a laptop asleep, it keeps growing to 5 minutes, as each
+         * attempt keeps the radio up and can spend the whole connect timeout. Coming back, or a network
+         * coming back, tries at once and starts again from the shortest wait.
+         */
+        fun retryWait(attempts: Int, away: Boolean): Long =
+            minOf(if (away) 300_000L else 15_000L, 500L shl minOf(attempts, 10))
     }
 }
