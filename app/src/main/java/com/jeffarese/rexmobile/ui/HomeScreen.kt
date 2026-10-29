@@ -5,11 +5,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -84,6 +80,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -105,6 +102,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -1067,20 +1065,45 @@ fun StatusBadge(status: ProgramStatus?, unseen: Boolean) {
     }
 }
 
+/**
+ * Three dots lit in turn while something works. They step a few times a second instead of fading on every frame,
+ * so a screen of working agents lets the display slow its refresh rate between steps, and they stand still with
+ * the phone's animations off. A screen reader skips them: what they're on says the state.
+ */
 @Composable
 fun WorkingDots(modifier: Modifier = Modifier, color: Color = Rex.working) {
-    val t = rememberInfiniteTransition(label = "dots")
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+    val context = LocalContext.current
+    val still = remember(context) { animationsOff(context) }
+    var lit by remember { mutableIntStateOf(0) }
+    if (!still) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                delay(DOTS_STEP_MS)
+                lit = (lit + 1) % 3
+            }
+        }
+    }
+    Row(modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
         repeat(3) { i ->
-            val a = t.animateFloat(
-                initialValue = 0.25f, targetValue = 1f,
-                animationSpec = infiniteRepeatable(tween(600, delayMillis = i * 160), RepeatMode.Reverse), label = "dot$i",
-            )
-            // Read in the layer, so each frame only redraws the dot rather than recomposing every row with dots.
-            Box(Modifier.size(4.dp).graphicsLayer { alpha = a.value }.clip(CircleShape).background(color))
+            // Read in the layer, so each step only redraws the dots rather than recomposing every row with dots.
+            Box(Modifier.size(4.dp).graphicsLayer { alpha = if (still) 1f else dotAlpha(i, lit) }.clip(CircleShape).background(color))
         }
     }
 }
+
+/** How long each of [WorkingDots]' steps lasts: a little over three a second. */
+private const val DOTS_STEP_MS = 300L
+
+/** The lit dot is full, the one it came from fading, the other faint: a wave that runs left to right. */
+internal fun dotAlpha(dot: Int, lit: Int) = when ((lit - dot + 3) % 3) {
+    0 -> 1f
+    1 -> 0.55f
+    else -> 0.25f
+}
+
+/** Whether the phone's animations are off: the animator duration scale at 0, as "Remove animations" sets it. */
+private fun animationsOff(context: Context) =
+    android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
 
 @Composable
 private fun EmptyState(onHosts: () -> Unit) {
