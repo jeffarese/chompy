@@ -62,7 +62,7 @@ data class Palette(
             accent = Color(0xFFFF6A3D),
             onAccent = Color.White,
             unseen = Color(0xFF3B8BFF),
-            working = Color(0xFFA78BFA),
+            working = Color(0xFF3B8BFF),
             blocked = Color(0xFFF5A524),
             done = Color(0xFF34D399),
             error = Color(0xFFF87171),
@@ -94,37 +94,14 @@ fun paletteOf(theme: RexTheme): Palette {
         accent = c("accent"),
         onAccent = c("accentOnSolid"),
         unseen = c("info"),
-        working = violetOf(theme),
+        // Blue, as Rex shows a working agent: the theme's info, which is unseen's too.
+        working = c("info"),
         blocked = c("warning"),
         done = c("success"),
         error = c("danger"),
         keyBg = step(0.08f),
         keyActive = step(0.16f),
     )
-}
-
-/**
- * Working's colour: the theme's own magenta where that is a violet, as it is in about half of them, else a violet
- * that reads on a dark or a light canvas. Elsewhere magenta is pink, orange or green, which Failed, Needs you or Done
- * would be taken for.
- */
-internal fun violetOf(theme: RexTheme): Color {
-    val magenta = Color(RexTheme.argb(theme.terminal.palette[5]))
-    val (r, g, b) = Triple(magenta.red, magenta.green, magenta.blue)
-    val max = maxOf(r, g, b)
-    val min = minOf(r, g, b)
-    val hue = when {
-        max == min -> -1f
-        max == r -> 60f * (((g - b) / (max - min)).mod(6f))
-        max == g -> 60f * ((b - r) / (max - min) + 2f)
-        else -> 60f * ((r - g) / (max - min) + 4f)
-    }
-    val violet = hue in 245f..290f && (max - min) / max > 0.2f
-    return when {
-        violet -> magenta
-        theme.dark -> Color(0xFFA78BFA)
-        else -> Color(0xFF7C5CC4)
-    }
 }
 
 object Rex {
