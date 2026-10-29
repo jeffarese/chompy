@@ -288,7 +288,9 @@ class HostConnection(
             val list: SessionList = c.callAs("session.list")
             val ids = list.sessions.orEmpty().map { it.sessionId }
             val boot: BootstrapResult = c.callAs("session.bootstrap", buildJsonObject {
-                put("event_scope", "all")
+                // Every session is attached, here and as it is created, so "session" still brings their
+                // blocks' events, without the pair of client events each `rex` command sends.
+                put("event_scope", "session")
                 putJsonArray("attach_session_ids") { ids.forEach { add(JsonPrimitive(it)) } }
             })
             val attached = boot.attachedSessions.orEmpty()

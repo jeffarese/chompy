@@ -1,5 +1,6 @@
 package com.jeffarese.rexmobile.rex
 
+import com.jeffarese.rexmobile.BuildConfig
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
@@ -69,7 +70,7 @@ class ControlConnection(
                         put("kind", "app")
                         put("platform", "other")
                         put("name", "Chompy")
-                        put("version", "0.1.0")
+                        put("version", BuildConfig.VERSION_NAME)
                     }
                     if (reconnectToken != null) put("reconnect_token", reconnectToken)
                 }

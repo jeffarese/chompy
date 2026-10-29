@@ -246,9 +246,13 @@ class FakeRex(vararg blockIds: String = arrayOf("b1")) : OkHttpClient() {
 
     inner class Control(request: Request, listener: WebSocketListener) : Socket(request, listener) {
         private var seq = 0L
+        /** The hello the app sent, once it has. */
+        @Volatile var hello: JsonObject? = null
+            private set
 
         override fun receive(text: String) {
             val msg = kotlinx.serialization.json.Json.parseToJsonElement(text).jsonObject
+            if (msg.str("type") == "hello") hello = msg
             when (msg.str("type")) {
                 "hello" -> listener.onMessage(this, buildJsonObject {
                     put("type", "welcome")

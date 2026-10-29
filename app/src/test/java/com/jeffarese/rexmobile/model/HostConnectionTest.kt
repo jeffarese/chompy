@@ -1,15 +1,19 @@
 package com.jeffarese.rexmobile.model
 
+import com.jeffarese.rexmobile.BuildConfig
 import com.jeffarese.rexmobile.FakeRex
 import com.jeffarese.rexmobile.FakeRex.Companion.status
 import com.jeffarese.rexmobile.rex.ProgramStatus
 import com.jeffarese.rexmobile.rex.TERMINAL_CREATOR
+import com.jeffarese.rexmobile.rex.obj
+import com.jeffarese.rexmobile.rex.str
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -252,6 +256,18 @@ class HostConnectionTest {
         assertEquals(Liveness.SILENT, result.get())
         waitFor("a new connection") { rex.controls.size == 2 }
         stuck.join(5_000)
+    }
+
+    @Test
+    fun theHelloSaysTheAppsVersionAndOnlySessionEventsAreAskedFor() {
+        val bootstraps = CopyOnWriteArrayList<JsonObject>()
+        val answer = rex.handle
+        rex.handle = { method, payload -> answer(method, payload).also { if (method == "session.bootstrap") bootstraps += payload } }
+        host.connect()
+        waitFor("online") { host.state.value.status == ConnStatus.ONLINE }
+        assertEquals(BuildConfig.VERSION_NAME, rex.controls.single().hello?.obj("client")?.str("version"))
+        // Every session is attached, so its blocks' events still come.
+        assertEquals("session", bootstraps.single().str("event_scope"))
     }
 
     @Test
