@@ -1,6 +1,6 @@
 """A scripted agent for the README demo: it prints like one and reports its status with OSC 7501. The Claude Code
-ones draw Claude's own screens (a question, a permission menu, a "You should know" note), so the app shows its cards
-for them and they take the keys those cards send.
+ones draw Claude's own screens (a question, a permission menu, a "You should know" note, the effort it works at), so
+the app shows its cards and controls for them and they take the keys those send.
 
 Usage: agent.py <role> <start-file>
 It waits until <start-file> exists, so every agent starts together when the recording does.
@@ -64,6 +64,9 @@ class Claude:
         self.said = []        # (first-line prefix, text, style)
         self.bottom = None    # a function of the width that gives the bottom's lines
         self.spinner = None
+        self.effort = "high"
+        self.badge = None     # shown under the footer once /effort changes the level, as Claude Code does
+        self.typed = ""
         signal.signal(signal.SIGWINCH, lambda *_: self.draw())
         tty.setraw(sys.stdin.fileno())
 
@@ -96,7 +99,7 @@ class Claude:
                 continue
             lines += self.wrap(prefix, text, width, style)
         if self.spinner:
-            lines += ["", f"{YELLOW}✻{RESET} {self.spinner}"]
+            lines += ["", f"{YELLOW}✻{RESET} {self.spinner} {self.GREY}(thinking with {self.effort} effort){RESET}"]
         lines.append("")
         lines += self.bottom(cols) if self.bottom else self.input_box(cols)
         lines = lines[-rows:]
@@ -111,9 +114,12 @@ class Claude:
         if note:
             out += note(cols)
             out.append("")
-        return out + [self.rule(cols), "❯ ", self.rule(cols),
-                      f"  {self.GREY}dev │ Opus 5.5 │ {self.project}{RESET}",
-                      f"  {YELLOW}⏵⏵ auto mode on{RESET}{self.GREY} (shift+tab to cycle){RESET}"]
+        out += [self.rule(cols), "❯ " + self.typed, self.rule(cols),
+                f"  {self.GREY}dev │ Opus 5.5 │ {self.project}{RESET}",
+                f"  {YELLOW}⏵⏵ auto mode on{RESET}{self.GREY} (shift+tab to cycle){RESET}"]
+        if self.badge:
+            out.append(f"  {self.ACCENT}{self.badge}{RESET} {self.effort} {self.GREY}· /effort{RESET}")
+        return out
 
     def key(self):
         return os.read(sys.stdin.fileno(), 16).decode(errors="replace")
@@ -209,6 +215,27 @@ class Claude:
         self.bottom = None
         self.draw()
 
+    def chat(self):
+        """The empty input box, for good: "/effort <level>" sets the level and shows its badge, as Claude Code does;
+        anything else is only echoed."""
+        levels = {"low": "○", "medium": "◔", "high": "◑", "xhigh": "◕", "max": "●"}
+        while True:
+            k = self.key().replace("\x1b[200~", "").replace("\x1b[201~", "")
+            for ch in k:
+                if ch in "\r\n":
+                    words = self.typed.split()
+                    if len(words) == 2 and words[0] == "/effort" and words[1] in levels:
+                        self.effort, self.badge = words[1], levels[words[1]]
+                        self.said += [("❯ ", self.typed, ""), ("  ⎿  ", f"Set effort level to {self.effort}", DIM)]
+                    elif self.typed:
+                        self.said.append(("❯ ", self.typed, ""))
+                    self.typed = ""
+                elif ch == "\x7f":
+                    self.typed = self.typed[:-1]
+                elif ch.isprintable():
+                    self.typed += ch
+            self.draw()
+
 
 def claude():
     app, title = "claude-code", "Fix reconnect after a network change"
@@ -219,13 +246,13 @@ def claude():
     c.say("❯ ", "The app doesn't reconnect after switching from wifi to LTE", pause=0.5)
     status("working", app=app, title=title, msg="Reading HostConnection.kt")
     c.spinner = "Reading…"
-    c.say("⏺ ", "Read(app/src/main/java/…/HostConnection.kt)", pause=1.5)
+    c.say("⏺ ", "Read(app/src/main/java/…/HostConnection.kt)", pause=3.0)
     status("working", app=app, title=title, msg="Tracing the network callback")
-    c.say("⏺ ", "Search(NetworkCallback)", pause=1.5)
+    c.say("⏺ ", "Search(NetworkCallback)", pause=3.0)
     status("working", app=app, title=title, msg="Editing NetworkWatch.kt")
     c.say("⏺ ", "Update(NetworkWatch.kt)")
     c.say("     ", "+ override fun onLost(network: Network) = reconnectSoon()", GREEN)
-    c.say("     ", "+ override fun onAvailable(network: Network) = reconnectSoon()", GREEN, 2.0)
+    c.say("     ", "+ override fun onAvailable(network: Network) = reconnectSoon()", GREEN, 3.5)
     c.spinner = None
     status("blocked", app=app, title=title, kind="permission", msg="Run ./gradlew testDebugUnitTest?")
     c.permit("Bash command", "./gradlew testDebugUnitTest", "Run the unit tests")
@@ -244,7 +271,7 @@ def claude():
            "background reconnects when it comes back, not before.",
            "Android stops delivering network callbacks to an app it has put in the background.",
            "Check the connection in onResume as well as in the callback.")
-    time.sleep(3600)
+    c.chat()
 
 
 def claude_asks():
@@ -256,9 +283,9 @@ def claude_asks():
     c.say("❯ ", "Add retries to the webhook sender", pause=0.5)
     status("working", app=app, title=title, msg="Reading webhooks/sender.go")
     c.spinner = "Exploring…"
-    c.say("⏺ ", "Read(webhooks/sender.go)", pause=1.2)
+    c.say("⏺ ", "Read(webhooks/sender.go)", pause=3.0)
     status("working", app=app, title=title, msg="Planning the retry policy")
-    c.say("⏺ ", "Read(queue/queue.go)", pause=1.2)
+    c.say("⏺ ", "Read(queue/queue.go)", pause=3.5)
     c.say("⏺ ", "Exponential backoff, 5 attempts, with jitter. One thing to settle first.", pause=0.6)
     c.spinner = None
     status("blocked", app=app, title=title, kind="question", msg="Which queue should the retries go through?")
@@ -298,7 +325,7 @@ def terraform():
     for line in ("module.vpc: Refreshing state...", "module.db: Refreshing state...",
                  "module.api: Refreshing state...", "module.queue: Refreshing state...", "Computing the plan..."):
         status("working", app=app, title=title, msg=line)
-        say(line, 1.0)
+        say(line, 2.0)
     status("done", app=app, title=title, msg="Plan: 3 to add, 1 to change, 0 to destroy")
     say(f"\n{BOLD}Plan:{RESET} {GREEN}3 to add{RESET}, {YELLOW}1 to change{RESET}, 0 to destroy.")
     time.sleep(3600)
@@ -314,11 +341,11 @@ def cargo():
     say(f"{BOLD}cargo test{RESET}")
     for p in range(10, 101, 15):
         status("working", app=app, title=title, msg="Compiling 84 crates")
-        say(f"   {GREEN}Compiling{RESET} crate {p}/100", 0.5)
+        say(f"   {GREEN}Compiling{RESET} crate {p}/100", 1.0)
     status("done", id="build", title="Build")
     status("working", app=app, title=title, msg="Running 148 tests")
     status("working", id="build/test", title="Unit tests")
-    say(f"     {GREEN}Running{RESET} unittests src/lib.rs", 1.5)
+    say(f"     {GREEN}Running{RESET} unittests src/lib.rs", 2.5)
     status("error", app=app, title=title, msg="2 of 148 tests failed: csi::params, osc::overlong")
     status("error", id="build/test", title="Unit tests", msg="2 failed")
     say(f"test csi::params ... {RED}FAILED{RESET}")

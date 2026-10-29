@@ -15,7 +15,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,14 +34,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.NewReleases
-import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -92,8 +88,10 @@ fun updatePending(updater: Updater): Boolean {
 
 /**
  * Home's card for a new version on its way, ready to install or installing, or for the version
- * just installed. Tapping it opens [UpdateSheet] through [onOpen]; it takes no room when there is
- * nothing to say, or the user put the version off.
+ * just installed. It is laid out like an agent's card under its group's name: Chompy's head with a
+ * dot in the colour of where the update is, the version, its first note, and the version you have.
+ * Tapping it opens [UpdateSheet] through [onOpen]; it takes no room when there is nothing to say,
+ * or the user put the version off.
  */
 @Composable
 fun UpdateCard(updater: Updater, onOpen: () -> Unit) {
@@ -109,57 +107,91 @@ fun UpdateCard(updater: Updater, onOpen: () -> Unit) {
         // Null for the version just installed.
         val s = pending
         val release = s?.release ?: justUpdated ?: return@AnimatedVisibility
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                .background(Rex.surface).border(1.dp, Rex.accent.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                .clickable(onClick = onOpen).padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(36.dp).clip(CircleShape).background(Rex.accentSoft), contentAlignment = Alignment.Center) {
-                Icon(if (s == null) Icons.Outlined.NewReleases else Icons.Outlined.SystemUpdate, null, tint = Rex.accent, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                val firstNote = releaseNoteLines(release.notes).firstOrNull()?.text
-                val (title, detail) = when (s) {
-                    null -> "Updated to ${release.version}" to (firstNote ?: "See what's new")
-                    is UpdateState.Available -> "Chompy ${release.version} is out" to (s.error ?: listOfNotNull(size(context, release), firstNote).joinToString(" · "))
-                    // Its percentage rolls, below.
-                    is UpdateState.Downloading -> "Downloading Chompy ${release.version}" to ""
-                    is UpdateState.Ready -> "Chompy ${release.version} is ready" to (s.error ?: firstNote ?: "Tap to see what's new")
-                    is UpdateState.Installing -> "Updating to ${release.version}" to "Chompy closes and is back in a moment"
-                }
-                Text(title, color = Rex.text, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val failed = (s as? UpdateState.Ready)?.error != null || (s as? UpdateState.Available)?.error != null
-                if (s is UpdateState.Downloading) {
-                    Row {
-                        RollingNumber((s.progress * 100).toInt(), Rex.textDim, 13.sp)
-                        Text("% of ${size(context, release) ?: "the update"}", color = Rex.textDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val error = (s as? UpdateState.Ready)?.error ?: (s as? UpdateState.Available)?.error
+        val color = when {
+            error != null -> Rex.error
+            s == null -> Rex.done
+            s is UpdateState.Downloading || s is UpdateState.Installing -> Rex.working
+            else -> Rex.accent
+        }
+        Column {
+            Text(
+                if (s == null) "Updated" else "Update", color = color, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 4.dp),
+            )
+            Column(
+                Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                    .background(Rex.surface).clickable(onClick = onOpen)
+                    .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Chompy's own tile, as a program has its own, with the dot an agent's card has.
+                    Box {
+                        Box(
+                            Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(Rex.surfaceHigh),
+                            contentAlignment = Alignment.Center,
+                        ) { Image(painterResource(R.drawable.chompy_head), contentDescription = null, modifier = Modifier.size(21.dp)) }
+                        Box(
+                            Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(11.dp)
+                                .background(Rex.surface, CircleShape).padding(2.dp).background(color, CircleShape),
+                        )
                     }
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        val firstNote = releaseNoteLines(release.notes).firstOrNull()?.text
+                        val title = when (s) {
+                            null -> "Updated to ${release.version}"
+                            is UpdateState.Available, is UpdateState.Ready -> "Chompy ${release.version}"
+                            is UpdateState.Downloading -> "Downloading Chompy ${release.version}"
+                            is UpdateState.Installing -> "Updating to ${release.version}"
+                        }
+                        Text(title, color = Rex.text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (s is UpdateState.Downloading) {
+                            Row {
+                                RollingNumber((s.progress * 100).toInt(), Rex.textDim, 13.sp)
+                                Text("% of ${size(context, release) ?: "the update"}", color = Rex.textDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        } else {
+                            val detail = when (s) {
+                                is UpdateState.Installing -> "Chompy closes and is back in a moment"
+                                else -> error ?: firstNote ?: "See what's new"
+                            }
+                            Text(detail, color = if (error != null) Rex.error else Rex.textDim, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        val source = if (s == null) "Tap to see what's new"
+                        else listOfNotNull("You have ${updater.currentVersion}", size(context, release).takeIf { s !is UpdateState.Downloading })
+                            .joinToString(" · ")
+                        Text(source, color = Rex.textFaint, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    when (s) {
+                        null -> Icon(
+                            Icons.Outlined.Close, "Dismiss", tint = Rex.textFaint,
+                            modifier = Modifier.clip(CircleShape).clickable(onClick = updater::dismissWhatsNew).padding(4.dp).size(18.dp),
+                        )
+                        is UpdateState.Available -> Pill(if (error != null) "Retry" else "Download", color) { updater.download(release) }
+                        is UpdateState.Ready -> Pill(if (error != null) "Retry" else "Update", color) { startInstall(updater, context) }
+                        is UpdateState.Downloading, is UpdateState.Installing -> WorkingDots(color = color)
+                    }
+                }
+                if (s is UpdateState.Downloading) {
                     LinearProgressIndicator(
-                        progress = { s.progress }, color = Rex.accent, trackColor = Rex.surfaceHigh, strokeCap = StrokeCap.Round,
-                        modifier = Modifier.fillMaxWidth().padding(end = 8.dp).height(3.dp),
+                        progress = { s.progress }, color = color, trackColor = Rex.surfaceHigh, strokeCap = StrokeCap.Round,
+                        modifier = Modifier.padding(start = 38.dp, top = 8.dp).fillMaxWidth().height(3.dp),
                     )
-                } else {
-                    Text(detail, color = if (failed) Rex.error else Rex.textDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-            }
-            Spacer(Modifier.width(8.dp))
-            when (s) {
-                null -> IconButton(onClick = updater::dismissWhatsNew) { Icon(Icons.Outlined.Close, "Dismiss", tint = Rex.textDim) }
-                is UpdateState.Available -> TextButton(onClick = { updater.download(release) }) {
-                    Text(if (s.error != null) "Retry" else "Download", color = Rex.accent)
-                }
-                is UpdateState.Ready -> Button(
-                    onClick = { startInstall(updater, context) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Rex.accent, contentColor = Rex.onAccent),
-                ) { Text(if (s.error != null) "Retry" else "Update") }
-                is UpdateState.Installing -> CircularProgressIndicator(Modifier.padding(end = 12.dp).size(18.dp), strokeWidth = 2.dp, color = Rex.accent)
-                is UpdateState.Downloading -> Unit
             }
         }
     }
+}
+
+/** The card's action, tinted like the board's "Needs you" badge rather than a button of its own. */
+@Composable
+private fun Pill(text: String, color: Color, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.16f)).clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) { Text(text, color = color, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
 }
 
 /**

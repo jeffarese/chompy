@@ -54,7 +54,7 @@ class Updater(
     private val scope: CoroutineScope,
     /** Null where the build doesn't update itself, such as a debug build, whose key differs. */
     private val feed: ReleaseFeed?,
-    private val currentVersion: String = BuildConfig.VERSION_NAME,
+    val currentVersion: String = BuildConfig.VERSION_NAME,
     private val dir: File = File(context.cacheDir, "updates"),
     private val verify: (File) -> String? = { checkApk(context, it) },
     private val metered: () -> Boolean = { isMetered(context) },

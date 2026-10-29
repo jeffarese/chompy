@@ -7,10 +7,10 @@ It shows what your agents are doing on every machine at once, and opens a real t
 running the same engine as the Rex server, when one of them needs you.
 
 <p align="center">
-  <img src="docs/media/agent-board.gif" width="320" alt="Six agents start on a Rex server, each with a dot in its group's colour. The board sorts them as they report: two Claude Code agents need you, Terraform finishes, Cargo's tests fail. A tap on the Claude that asks which queue to use opens its terminal, where its question shows as a card and a tap answers it. The other Claude wants to run the tests; a tap on Yes in its card allows it. Once they pass, Claude leaves a note that shows as a card too: Learn more opens its explanation and Understood puts it away.">
+  <img src="docs/media/agent-board.gif" width="320" alt="Six agents start on a Rex server, each with a dot in its group's colour. The board sorts them as they report: two Claude Code agents need you, Terraform finishes, Cargo's tests fail. A tap on the Claude that asks which queue to use opens its terminal, where its question shows as a card and a tap answers it. The other Claude wants to run the tests; a tap on Yes in its card allows it. Once they pass, Claude leaves a note that shows as a card too: Learn more opens its explanation and Understood puts it away. Then Claude's controls open over the key bar, and its effort goes from high to max from the Effort chip's menu.">
 </p>
 <p align="center"><sub>
-  35 seconds, unedited, on an emulator (<a href="docs/media/agent-board.mp4">MP4, 720p</a>).
+  48 seconds, unedited, on an emulator (<a href="docs/media/agent-board.mp4">MP4, 720p</a>).
   The agents are scripts that report with OSC 7501; the server, the app and the taps are real.
   <a href="docs/demo">How it was recorded.</a>
 </sub></p>

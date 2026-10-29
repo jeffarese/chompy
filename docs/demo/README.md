@@ -5,8 +5,9 @@ emulator against a Rex server on this Mac. The agents in it are scripts: [agent.
 like Claude Code, Codex, Terraform, Cargo and Gemini would, and reports its status with the same
 OSC 7501 sequences a real agent sends. None of them reports a percentage, as none of those programs does,
 so no card shows a progress bar. The two Claude Code agents draw Claude's own screens (a question, a
-permission menu and a "You should know" note), so the app shows its cards for them. Everything else (the server, the protocol, the app, the
-taps) is real.
+permission menu, a "You should know" note and the effort it thinks at), so the app shows its cards and
+controls for them, and one takes `/effort` as Claude does. Everything else (the server, the protocol, the
+app, the taps) is real.
 
 ## Record it again
 
@@ -26,21 +27,29 @@ taps) is real.
    ./gradlew :app:assembleBenchmark -Prex.defaultHosts=Studio=http://10.0.2.2:47321
    ```
 
-3. Boot the emulator, install the APK, and give it a clean status bar:
+3. Boot the emulator, install the APK, and give it a clean status bar: a fixed clock, full Wi-Fi and
+   battery, and none of the emulator's own icons, such as its satellite one.
 
    ```sh
    adb install -r app/build/outputs/apk/benchmark/app-benchmark.apk
    adb shell settings put global sysui_demo_allowed 1
-   adb shell am broadcast -a com.android.systemui.demo -e command enter
-   adb shell am broadcast -a com.android.systemui.demo -e command clock -e hhmm 0941
-   adb shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false
+   demo() { adb shell am broadcast -a com.android.systemui.demo -e command "$@" >/dev/null; }
+   demo enter
+   demo clock -e hhmm 0941
+   demo notifications -e visible false
+   demo battery -e level 100 -e plugged false
+   demo network -e satellite hide
+   demo network -e wifi show -e level 4 -e fully true
+   demo network -e mobile hide
    adb shell cmd uimode night yes
    ```
 
-4. Run `docs/demo/record.sh`. It stages six sessions ([stage.sh](stage.sh)), starts the recording and
-   starts every agent at once. It answers Claude's question from its card, then opens the Claude
-   asking for permission, taps Yes, opens the note Claude leaves once the tests pass, puts it away
-   and goes back to the board. The raw video lands in `build/demo/demo-raw.mp4`.
+4. Run `docs/demo/record.sh`. It stages six sessions ([stage.sh](stage.sh)), clears the app's data so
+   nothing from an earlier take shows, starts the recording and starts every agent at once. They work
+   for a few seconds before the first one needs anything. It answers Claude's question from its card,
+   then opens the Claude asking for permission, taps Yes, opens the note Claude leaves once the tests
+   pass and puts it away. Then it opens Claude's controls from the key bar, turns its effort up from
+   high to max, and goes back to the board. The raw video lands in `build/demo/demo-raw.mp4`.
 
 5. Encode it for the README:
 
