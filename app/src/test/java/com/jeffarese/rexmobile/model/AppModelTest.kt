@@ -70,6 +70,25 @@ class AppModelTest {
     }
 
     @Test
+    fun aPhoneSizedBlockIsTakenBackAfterAReconnectAndOnReturn() {
+        model.onForeground()
+        val host = host()
+        waitFor("online") { host.state.value.status == ConnStatus.ONLINE }
+        val t = model.terminal(host, "s1", "b1")
+        t.setPhoneSized(true)
+        waitFor("the take") { rex.count("session.own_block") == 1 }
+
+        // A connection made again, maybe as a new client, which Rex gives no blocks back to.
+        rex.controls.last().drop()
+        waitFor("the take after reconnecting") { rex.count("session.own_block") == 2 }
+
+        // The desktop may have taken it while the phone was away, within the time it stays connected.
+        model.onBackground()
+        model.onForeground()
+        waitFor("the take on return") { rex.count("session.own_block") == 3 }
+    }
+
+    @Test
     fun anEditedHostsTerminalsAreClosed() {
         val host = host()
         val t = model.terminal(host, "s1", "b1")

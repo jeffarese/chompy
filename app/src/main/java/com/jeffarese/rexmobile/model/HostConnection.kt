@@ -166,6 +166,8 @@ class HostConnection(
     private var attempts = 0
     private var wanted = false
     private val viewFetches = mutableMapOf<String, Job>()
+    /** The newest revision announced for each session's view. */
+    private val viewWanted = mutableMapOf<String, Long>()
 
     /** How many events have changed each part of a block's meta. */
     private data class Changes(val title: Int = 0, val pwd: Int = 0, val process: Int = 0, val statuses: Int = 0)
@@ -267,7 +269,6 @@ class HostConnection(
 
     private suspend fun onWelcome(c: ControlConnection, welcome: Welcome) {
         reconnectToken = welcome.reconnectToken
-        attempts = 0
         if (!answered && urlIndex != 0) onMoved(urls[urlIndex])
         answered = true
         try {
@@ -280,6 +281,8 @@ class HostConnection(
                 putJsonArray("attach_session_ids") { ids.forEach { add(JsonPrimitive(it)) } }
             })
             val attached = boot.attachedSessions.orEmpty()
+            // Only now: a server that welcomes but fails what follows is tried less and less often.
+            attempts = 0
             _state.update { s ->
                 s.copy(
                     status = ConnStatus.ONLINE,
@@ -363,7 +366,7 @@ class HostConnection(
             "session_view_changed" -> {
                 val rev = p.long("revision") ?: return
                 val held = _state.value.views[sid]?.revision ?: -1
-                if (rev > held) fetchView(c, sid)
+                if (rev > held) fetchView(c, sid, rev)
             }
             "session_label_changed" -> {
                 val label = p.str("label") ?: return
@@ -418,7 +421,7 @@ class HostConnection(
             "bell" -> {
                 patch(sid, bid) { it.copy(unseen = true) }
                 val meta = _state.value.blocks[bid]
-                onAlert(Alert(id, sid, bid, Alert.Kind.BELL, meta?.taskTitle ?: meta?.title ?: "Terminal", null))
+                onAlert(Alert(id, sid, bid, Alert.Kind.BELL, alertTitle(meta?.taskTitle, meta?.title), null))
             }
             "desktop_notification" -> {
                 val title = data.str("title").orEmpty()
@@ -444,8 +447,11 @@ class HostConnection(
         val meta = _state.value.blocks[bid]
         if (!isAgentRecord(rec, meta?.statuses.orEmpty())) return
         patch(sid, bid) { it.copy(unseen = true) }
-        onAlert(Alert(id, sid, bid, kind, rec.title ?: meta?.taskTitle ?: meta?.title ?: "Terminal", rec.msg))
+        onAlert(Alert(id, sid, bid, kind, alertTitle(rec.title, meta?.taskTitle, meta?.title), rec.msg))
     }
+
+    /** The first of [titles] that says something, as a program can set an empty one. */
+    private fun alertTitle(vararg titles: String?) = titles.firstOrNull { !it.isNullOrBlank() } ?: "Terminal"
 
     private fun patch(sid: String, bid: String, fn: (BlockMeta) -> BlockMeta) {
         _state.update { st -> st.copy(blocks = st.blocks + (bid to fn(st.blocks[bid] ?: BlockMeta(sid)))) }
@@ -455,18 +461,32 @@ class HostConnection(
         changes[bid] = fn(changes[bid] ?: Changes())
     }
 
-    private fun fetchView(c: ControlConnection, sid: String) {
+    /**
+     * Read a session's view again until it is at [revision] or later, as a change announced while a
+     * read is on its way may have come too late for it.
+     */
+    private fun fetchView(c: ControlConnection, sid: String, revision: Long) {
+        viewWanted[sid] = maxOf(viewWanted[sid] ?: -1, revision)
         if (viewFetches[sid]?.isActive == true) return
         viewFetches[sid] = scope.launch(serial) {
-            delay(60) // coalesce bursts of changes
-            val view: SessionView = runCatching {
-                c.callAs<SessionView>("session.view", buildJsonObject { put("session_id", sid) })
-            }.getOrNull() ?: return@launch
-            _state.update { st ->
-                if ((st.views[sid]?.revision ?: -1) >= view.revision) st
-                else st.copy(views = st.views + (sid to view))
+            var failures = 0
+            while (conn === c && failures < 3) {
+                // Coalesce bursts of changes, and wait longer after a failure.
+                delay(60L shl (2 * failures))
+                val view = runCatching {
+                    c.callAs<SessionView>("session.view", buildJsonObject { put("session_id", sid) })
+                }.getOrNull()
+                if (view == null) {
+                    failures++
+                    continue
+                }
+                _state.update { st ->
+                    if ((st.views[sid]?.revision ?: -1) >= view.revision) st
+                    else st.copy(views = st.views + (sid to view))
+                }
+                refreshMetaFor(c, view)
+                if (view.revision >= (viewWanted[sid] ?: -1)) break
             }
-            refreshMetaFor(c, view)
         }
     }
 
@@ -487,8 +507,7 @@ class HostConnection(
     private fun refreshMetaFor(c: ControlConnection, view: SessionView, all: Boolean = false) {
         val sid = view.sessionId ?: return
         val known = _state.value.blocks
-        val bids = view.windows.orEmpty().flatMap { it.blocks }
-            .filter { it.creatorName == null || it.creatorName == TERMINAL_CREATOR }
+        val bids = view.windows.orEmpty().flatMap { it.terminalBlocks }
             .map { it.blockId }
             .filter { all || it !in known }
         if (bids.isEmpty()) return

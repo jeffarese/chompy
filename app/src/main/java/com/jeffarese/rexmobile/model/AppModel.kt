@@ -367,8 +367,12 @@ class AppModel(
             when {
                 t.paused && t.blockId != visible -> Watch(t, "left paused until opened", watch = false)
                 t.paused -> Watch(t, "streamed again").also { t.resume() }
-                t.streamState.value != StreamState.LIVE -> Watch(t, "was ${t.streamState.value.name.lowercase()}, retried now").also { t.reconnectNow() }
-                else -> Watch(t, "kept its stream").also { kept += t }
+                else -> {
+                    // A phone-sized block may have gone to the desktop while away: take it back, as opening it does.
+                    t.reclaim()
+                    if (t.streamState.value != StreamState.LIVE) Watch(t, "was ${t.streamState.value.name.lowercase()}, retried now").also { t.reconnectNow() }
+                    else Watch(t, "kept its stream").also { kept += t }
+                }
             }
         }
         // A stream kept from before leaving can't be trusted when its host is silent, unless it is still

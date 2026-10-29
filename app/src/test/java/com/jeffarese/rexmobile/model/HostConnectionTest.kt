@@ -147,6 +147,25 @@ class HostConnectionTest {
     }
 
     @Test
+    fun aViewChangeAnnouncedDuringItsReadIsReadToo() {
+        host.connect()
+        waitFor("the first view") { host.state.value.views["s1"]?.revision == 1L }
+
+        // The read for revision 2 is held while the session changes again.
+        val held = CompletableFuture<JsonElement>()
+        val answer = rex.handle
+        rex.handle = { method, payload -> if (method == "session.view" && !held.isDone) held else answer(method, payload) }
+        rex.revision = 2
+        rex.controls.last().viewChanged(2)
+        waitFor("the held read") { rex.count("session.view") == 1 }
+        val second = answer("session.view", buildJsonObject { put("session_id", "s1") }).get()
+        rex.revision = 3
+        rex.controls.last().viewChanged(3)
+        held.complete(second)
+        waitFor("the view at revision 3") { host.state.value.views["s1"]?.revision == 3L }
+    }
+
+    @Test
     fun aHostWithoutAPortThatAnswersOnlyOn7297IsKeptThere() {
         rex.refuses = { it.port != 7297 }
         val moved = CopyOnWriteArrayList<String>()

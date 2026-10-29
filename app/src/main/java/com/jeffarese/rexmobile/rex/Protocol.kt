@@ -57,7 +57,10 @@ data class BlockInfo(
     val flavor: String? = null,
     @SerialName("host_id") val hostId: String? = null,
     val owner: String? = null,
-)
+) {
+    /** A terminal, the only kind of block the app shows, rather than another kind, such as Rex's walkthrough. */
+    val isTerminal: Boolean get() = creatorName == null || creatorName == TERMINAL_CREATOR
+}
 
 @Serializable
 data class Layer(
@@ -76,6 +79,9 @@ data class WindowView(
     val layers: List<Layer>? = null,
 ) {
     val blocks: List<BlockInfo> get() = layers.orEmpty().flatMap { it.blocks.orEmpty() }
+
+    /** The [blocks] the app can open. */
+    val terminalBlocks: List<BlockInfo> get() = blocks.filter { it.isTerminal }
 
     /** Blocks with their rects, tiled ones in layout order, then floating ones. */
     val placedBlocks: List<Pair<String, List<Double>>>

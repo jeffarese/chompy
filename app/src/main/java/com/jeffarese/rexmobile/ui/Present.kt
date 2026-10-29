@@ -114,7 +114,7 @@ fun displayProgram(meta: BlockMeta?): String = when (val p = programOf(meta)) {
 
 /** The block to represent a window in lists: the one that most needs attention, else the focused one. */
 fun representativeBlock(win: WindowView, metas: Map<String, BlockMeta>): String? {
-    val ids = win.blocks.map { it.blockId }
+    val ids = win.terminalBlocks.map { it.blockId }
     val urgent = ids.maxByOrNull { id -> metas[id]?.status?.let { com.jeffarese.rexmobile.model.statusRank(it.state) } ?: 0 }
     val urgentRank = urgent?.let { metas[it]?.status?.let { s -> com.jeffarese.rexmobile.model.statusRank(s.state) } } ?: 0
     return if (urgentRank >= 3) urgent else win.focusedBlockId?.takeIf { it in ids } ?: ids.firstOrNull()

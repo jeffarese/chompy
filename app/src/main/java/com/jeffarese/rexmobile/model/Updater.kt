@@ -109,8 +109,9 @@ class Updater(
             install()
         }
         (_state.value as? UpdateState.Installing)?.let { s ->
-            val id = session
-            if (id == null || context.packageManager.packageInstaller.getSessionInfo(id) == null) {
+            // No session yet while install() is still making it, as just above.
+            val id = session ?: return@let
+            if (context.packageManager.packageInstaller.getSessionInfo(id) == null) {
                 _state.value = UpdateState.Ready(s.release, s.apk)
             } else confirm?.let { showConfirm(it) }
         }
@@ -193,6 +194,8 @@ class Updater(
     /** Hand the downloaded version to Android. Rex closes when it is installed. */
     fun install() {
         val ready = _state.value as? UpdateState.Ready ?: return
+        session = null
+        confirm = null
         _state.value = UpdateState.Installing(ready.release, ready.apk)
         prefs.edit().putString(INSTALLING, ready.release.version).apply()
         scope.launch(Dispatchers.IO) {
@@ -206,7 +209,6 @@ class Updater(
                 }
                 val id = installer.createSession(params)
                 session = id
-                confirm = null
                 installer.openSession(id).use { s ->
                     s.openWrite("base.apk", 0, ready.apk.length()).use { out ->
                         ready.apk.inputStream().use { it.copyTo(out) }

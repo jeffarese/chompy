@@ -3,6 +3,7 @@ package com.jeffarese.rexmobile.terminal
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import com.jeffarese.rexmobile.model.ConnStatus
 import com.jeffarese.rexmobile.model.HostConnection
 import com.jeffarese.rexmobile.rex.BlockStream
 import com.jeffarese.rexmobile.rex.BlockStreamListener
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -211,6 +213,8 @@ class RemoteTerminal(
         override fun key(key: RemoteKey) = sendKey(key)
 
         override fun lines() = session.emulator?.let(ScreenReader::wholeLines).orEmpty()
+
+        override fun screen() = session.emulator?.let(ScreenReader::visibleLines).orEmpty()
     }, scope)
 
     private var lastViewSize: RemoteSize? = null
@@ -259,6 +263,10 @@ class RemoteTerminal(
     init {
         // The control connection dropping may mean the path is gone, which the stream can't tell.
         scope.launch { host.drops.drop(1).collect { stream.reconnectIfQuiet(QUIET_STREAM_MS) } }
+        // Connected again, maybe as a new client, which owns nothing: the block may have gone to the desktop.
+        scope.launch {
+            host.state.map { it.status == ConnStatus.ONLINE }.distinctUntilChanged().drop(1).filter { it }.collect { reclaim() }
+        }
         scope.launch {
             host.state.map { st -> st.blocks[blockId]?.statuses.orEmpty().any { it.state == "working" } }
                 .distinctUntilChanged()
@@ -339,14 +347,23 @@ class RemoteTerminal(
     fun resume() {
         if (!paused) return
         paused = false
-        if (_phoneSized.value) {
-            inOrder {
-                runCatching { host.ownBlock(sessionId, blockId) }
-                // The desktop resized it while it was handed back, whatever the size last seen here.
-                requestPhoneSize(force = true)
-            }
-        }
+        reclaim()
         reconnectNow()
+    }
+
+    /**
+     * Take a phone-sized block back and size it to this screen again. When the phone's connection
+     * drops, Rex hands its blocks to the desktop and gives them back only to the same client
+     * reconnecting, so a new connection, or a take sent on one that was dead, leaves the block at the
+     * desktop's size, wider than this screen. Main thread only.
+     */
+    fun reclaim() {
+        if (!_phoneSized.value || paused) return
+        inOrder {
+            runCatching { host.ownBlock(sessionId, blockId) }
+            // The desktop may have resized it meanwhile, whatever the size last seen here.
+            withContext(Dispatchers.Main) { requestPhoneSize(force = true) }
+        }
     }
 
     fun reconnectNow() {
@@ -1167,7 +1184,7 @@ class RemoteTerminal(
         inOrder {
             if (on) {
                 runCatching { host.ownBlock(sessionId, blockId) }
-                requestPhoneSize()
+                withContext(Dispatchers.Main) { requestPhoneSize() }
             } else {
                 host.disownBlock(sessionId, blockId)
             }
@@ -1183,6 +1200,7 @@ class RemoteTerminal(
         }.also { ownershipJob = it }
     }
 
+    /** Main thread only, as the view's size changes there. */
     private fun requestPhoneSize(force: Boolean = false) {
         val size = lastViewSize ?: return
         phoneResizeJob?.cancel()

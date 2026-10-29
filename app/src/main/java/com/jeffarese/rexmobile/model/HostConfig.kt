@@ -44,7 +44,8 @@ class HostStore(context: Context) {
 
     fun add(label: String, address: String, icon: String? = null): HostConfig {
         val url = ControlConnection.normalizeHostUrl(address)
-        val existing = _hosts.value.firstOrNull { it.url.equals(url, ignoreCase = true) }
+        // Also a host kept at the address it answered on instead, such as its :7297.
+        val existing = _hosts.value.firstOrNull { h -> ControlConnection.urlsToTry(url).any { h.url.equals(it, ignoreCase = true) } }
         if (existing != null) return existing
         val host = HostConfig(label = label.ifBlank { hostLabelFrom(url) }, url = url, icon = icon)
         save(_hosts.value + host)

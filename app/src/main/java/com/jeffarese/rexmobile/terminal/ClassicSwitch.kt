@@ -36,6 +36,9 @@ class ClassicSwitch(private val link: Link, private val scope: CoroutineScope, p
 
         /** Every line of the history and screen, oldest first, with wrapped rows joined. */
         fun lines(): List<String>
+
+        /** The screen's rows, without the history. */
+        fun screen(): List<String>
     }
 
     class Timing(
@@ -85,29 +88,28 @@ class ClassicSwitch(private val link: Link, private val scope: CoroutineScope, p
         if (!info.fullscreen) return State.Idle
         refusal(info)?.let { return State.Failed(it) }
         _state.value = State.Working("Checking how Claude was started…")
-        if (!startedFromShell(link.process())) {
-            return State.Failed("Claude was started without a shell here, so quitting it would close the pane.")
-        }
+        val shell = shell(link.process())
+            ?: return State.Failed("Claude was started without a shell here, so quitting it would close the pane.")
         // Read the footer again: the check took a round trip.
         val now = link.info()
         refusal(now)?.let { return State.Failed(it) }
         val flags = resumeFlags(now)
 
         _state.value = State.Working("Quitting Claude…")
-        val seen = resumeIds(link.lines()).size
         link.type("/exit")
         delay(timing.beforeEnter)
         link.key(RemoteKey.ENTER)
-        val id = waitFor(timing.quit) { if (!link.info().fullscreen) resumeIds(link.lines()).drop(seen).lastOrNull() else null }
-            ?: return State.Failed(
-                if (link.info().fullscreen) "Claude didn't quit. Try again once it's idle."
-                else "Claude quit without its resume line. Run claude --resume to pick the conversation.",
-            )
+        waitFor(timing.quit) { if (link.info().fullscreen) null else Unit }
+            ?: return State.Failed("Claude didn't quit. Try again once it's idle.")
+        // Back on the main screen, whose history can hold older resume lines, such as on the command that
+        // started Claude: Claude's own comes after it leaves the alternate screen, maybe in a later message.
+        // The shell draws its prompt after that, and a line editor can drop what was typed before it.
+        settle()
+        val id = resumeIds(link.lines()).lastOrNull()
+            ?: return State.Failed("Claude quit without its resume line. Run claude --resume to pick the conversation.")
 
         _state.value = State.Working("Resuming the conversation…")
-        // The shell draws its prompt after Claude's goodbye, and a line editor can drop what was typed before it.
-        settle()
-        link.type(resumeCommand(id, flags))
+        link.type(resumeCommand(id, flags, shell))
         link.key(RemoteKey.ENTER)
         val back = waitFor(timing.resume) { link.info().takeIf { it.claudeMode != null || it.claudeInput != null } }
             ?: return State.Failed("Claude didn't come back. Its conversation is $id.")
@@ -116,13 +118,13 @@ class ClassicSwitch(private val link: Link, private val scope: CoroutineScope, p
 
     /** Waits for the screen to stay the same for [Timing.settle], or up to [Timing.quit]. */
     private suspend fun settle() {
-        var last = link.lines()
+        var last = link.screen()
         var still = 0L
         var waited = 0L
         while (still < timing.settle && waited < timing.quit) {
             delay(timing.poll)
             waited += timing.poll
-            val now = link.lines()
+            val now = link.screen()
             if (now == last) still += timing.poll else still = 0
             last = now
         }
@@ -140,6 +142,8 @@ class ClassicSwitch(private val link: Link, private val scope: CoroutineScope, p
 
     companion object {
         private val SHELLS = setOf("zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu", "elvish", "xonsh")
+        /** The shells that take VAR=value before a command; the others are given it through env. */
+        private val ENV_PREFIX_SHELLS = setOf("zsh", "bash", "fish", "sh", "dash", "ksh", "nu")
         private val RESUME = Regex("""\bclaude (?:--resume|-r) ([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b""")
         private val LEVELS = setOf("low", "medium", "high", "xhigh", "max")
         private val MODES = mapOf(
@@ -159,15 +163,15 @@ class ClassicSwitch(private val link: Link, private val scope: CoroutineScope, p
             else -> null
         }
 
-        /** Whether Claude runs in the foreground with a shell under it, which takes over when it quits. */
-        fun startedFromShell(process: JsonObject?): Boolean {
-            val foreground = process?.get("foreground") as? JsonObject ?: return false
+        /** The shell under Claude, which takes over when it quits; null unless Claude runs in the foreground with one. */
+        fun shell(process: JsonObject?): String? {
+            val foreground = process?.get("foreground") as? JsonObject ?: return null
             val claude = listOf("argv0", "name", "invoked_path", "script").any { k ->
                 foreground.string(k)?.substringAfterLast('/')?.let { it == "claude" || it == "cli.js" && k == "script" } == true
             }
-            val parent = (process["ancestors"] as? JsonArray)?.firstOrNull() as? JsonObject ?: return false
+            val parent = (process["ancestors"] as? JsonArray)?.firstOrNull() as? JsonObject ?: return null
             val shell = (parent.string("name") ?: parent.string("argv0")?.removePrefix("-"))?.substringAfterLast('/')
-            return claude && shell in SHELLS
+            return shell.takeIf { claude && it in SHELLS }
         }
 
         /** The conversations Claude said how to resume, in the order they appear. */
@@ -179,8 +183,10 @@ class ClassicSwitch(private val link: Link, private val scope: CoroutineScope, p
             info.claudeEffort?.takeIf { it in LEVELS }?.let { "--effort $it" },
         )
 
-        fun resumeCommand(id: String, flags: List<String>): String =
-            (listOf("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 claude --resume $id") + flags).joinToString(" ")
+        fun resumeCommand(id: String, flags: List<String>, shell: String): String {
+            val command = (listOf("CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 claude --resume $id") + flags).joinToString(" ")
+            return if (shell in ENV_PREFIX_SHELLS) command else "env $command"
+        }
 
         private fun JsonObject.string(key: String) = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
     }

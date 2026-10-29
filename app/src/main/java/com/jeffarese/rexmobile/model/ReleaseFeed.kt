@@ -75,6 +75,8 @@ fun compareVersions(a: String, b: String): Int {
  */
 class ReleaseFeed(private val repo: String, private val token: String, private val http: OkHttpClient) {
     @Volatile private var useToken = token.isNotBlank()
+    /** GitHub refused the token. A private repository is then a 404, which mustn't read as no release. */
+    @Volatile private var tokenRefused = false
 
     /** The newest release with an APK, or null if there is none. Blocking. */
     fun latest(): Release? {
@@ -84,6 +86,7 @@ class ReleaseFeed(private val repo: String, private val token: String, private v
             .build()
         return call(request).use { r ->
             when {
+                r.code == 404 && tokenRefused -> throw IOException("GitHub refused the update token")
                 r.code == 404 -> null
                 !r.isSuccessful -> throw IOException(describe(r))
                 else -> parse(r.body!!.string())
@@ -133,7 +136,7 @@ class ReleaseFeed(private val repo: String, private val token: String, private v
 
     /**
      * [request] with the token while it works. GitHub answers 401 to a bad token even for a public
-     * repository, so after one the token is left off for good. OkHttp drops the header itself when
+     * repository, so after one the token is left off for good, and a private one is out of reach. OkHttp drops the header itself when
      * a download is redirected to GitHub's file storage, which refuses requests that carry it.
      */
     private fun call(request: Request): Response {
@@ -142,6 +145,7 @@ class ReleaseFeed(private val repo: String, private val token: String, private v
             if (r.code != 401) return r
             r.close()
             useToken = false
+            tokenRefused = true
         }
         return http.newCall(request).execute()
     }

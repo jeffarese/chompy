@@ -157,6 +157,16 @@ class TerminalViewportScrollTest {
     }
 
     @Test
+    fun aSlowPinchGrowsTheTextAsFarAsTheFingersSpread() {
+        viewport.mode = TerminalViewport.Mode.PHONE
+        idle()
+        val before = viewport.phoneTextSize
+        // Ten small steps, each too small to make a pixel of text on its own.
+        pinch(300f, 360f)
+        assertTrue("font grew: $before -> ${viewport.phoneTextSize}", viewport.phoneTextSize >= before * 1.1f)
+    }
+
+    @Test
     fun scrollToBottomReturnsToTheLiveScreen() {
         downTime = SystemClock.uptimeMillis()
         time = downTime

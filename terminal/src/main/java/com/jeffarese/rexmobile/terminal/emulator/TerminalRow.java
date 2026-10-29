@@ -48,10 +48,14 @@ public final class TerminalRow {
 
     /** The column whose text holds the character at {@code index} of {@link #mText}, or the number of columns past its end. */
     public int findColumnOfIndex(int index) {
-        for (int column = 0; column < mColumns; column++) {
-            if (mStart[column + 1] > index) return column;
+        // The first column whose text ends past index: the starts only grow, so search by halves.
+        int lo = 0, hi = mColumns;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (mStart[mid + 1] > index) hi = mid;
+            else lo = mid + 1;
         }
-        return mColumns;
+        return lo;
     }
 
     /** How many columns the text starting at {@code column} takes: 1, 2 for a wide character, or 0 for the right half of one. */

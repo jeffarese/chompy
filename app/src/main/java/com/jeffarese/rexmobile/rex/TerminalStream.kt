@@ -148,4 +148,7 @@ object DataHandshake {
         6 to "server failed",
         7 to "wrong subprotocol",
     )
+
+    /** Rejections of the handshake itself, rather than of this stream now: a malformed one, or the wrong subprotocol. */
+    val PERMANENT_REJECTS = setOf(5, 7)
 }

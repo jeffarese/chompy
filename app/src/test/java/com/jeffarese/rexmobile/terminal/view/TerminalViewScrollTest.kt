@@ -176,6 +176,23 @@ class TerminalViewScrollTest {
     }
 
     @Test
+    fun aSelectionInHistoryOutlastsAnUpdateThatClearsIt() {
+        drag(8f * lineHeight)
+        // Selection takes the focus, as the app's terminal can.
+        view.isFocusable = true
+        view.isFocusableInTouchMode = true
+        val press = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, view.width / 2f, 2f * lineHeight, 0)
+        view.startTextSelectionMode(press)
+        press.recycle()
+        assertTrue(view.isSelectingText)
+        term.print("\u001b[?2026h\u001b[3J")
+        assertTrue(term.session.isUpdateHeld)
+        // A frame drawn meanwhile, as when a selection handle moves, had rows from history that was gone.
+        view.draw(Canvas(Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)))
+        assertEquals(0, view.topRow)
+    }
+
+    @Test
     fun atTheBottomOutputIsFollowed() {
         assertEquals(0, view.scrollbackRows)
         term.printLines(200, 30)

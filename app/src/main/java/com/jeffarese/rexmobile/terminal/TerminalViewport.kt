@@ -18,6 +18,7 @@ import com.jeffarese.rexmobile.terminal.view.TerminalView
 import com.jeffarese.rexmobile.terminal.view.TerminalViewClient
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * Hosts a [TerminalView] and decides how big its text is.
@@ -96,11 +97,14 @@ class TerminalViewport(context: Context, typeface: Typeface) : FrameLayout(conte
     private var lastFocusX = 0f
     private var lastFocusY = 0f
     private var pinchStartText = 0
+    /** How far the fingers have spread since the pinch began, within what keeps the text size in bounds. */
+    private var pinchScale = 1f
 
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
             terminalView.stopScrolling()
             pinchStartText = phoneTextSize
+            pinchScale = 1f
             if (zoom == 1f) {
                 panX = terminalView.left.toFloat()
                 panY = terminalView.top.toFloat()
@@ -112,7 +116,10 @@ class TerminalViewport(context: Context, typeface: Typeface) : FrameLayout(conte
 
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             if (mode == Mode.PHONE) {
-                phoneTextSize = (phoneTextSize * detector.scaleFactor).toInt().coerceIn(minText, maxText)
+                // Each event's factor is a step from the last one: rounded one at a time, a slow pinch would never grow the text.
+                val start = pinchStartText.toFloat()
+                pinchScale = (pinchScale * detector.scaleFactor).coerceIn(minText / start, maxText / start)
+                phoneTextSize = (start * pinchScale).roundToInt()
                 return true
             }
             val newZoom = (zoom * detector.scaleFactor).coerceIn(1f, 6f)

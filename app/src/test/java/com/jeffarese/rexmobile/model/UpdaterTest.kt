@@ -24,6 +24,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.File
 
@@ -134,6 +135,20 @@ class UpdaterTest {
         now += Updater.CHECK_EVERY_MS + 1
         u.onResume()
         u.await { it as? UpdateState.Ready }
+    }
+
+    @Test
+    fun installsOnComingBackOnceAllowed() {
+        val u = updater()
+        u.onResume()
+        u.await { it as? UpdateState.Ready }
+        u.permissionIntent()
+        shadowOf(context.packageManager).setCanRequestPackageInstalls(true)
+        u.onResume()
+        // Android's answer, such as its confirmation, comes for the session being made: the update waits for it.
+        Thread.sleep(500)
+        assertTrue("${u.state.value}", u.state.value is UpdateState.Installing)
+        assertEquals(1, context.packageManager.packageInstaller.mySessions.size)
     }
 
     @Test

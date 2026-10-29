@@ -57,6 +57,8 @@ class FakeRex(vararg blockIds: String = arrayOf("b1")) : OkHttpClient() {
     /** The byte ranges of redraws read through blob_read, from and to. */
     val blobReads = CopyOnWriteArrayList<LongRange>()
 
+    /** The session view's revision, as session.view returns it. */
+    @Volatile var revision = 1L
     /** The remote terminal's size, sent after each fresh snapshot. */
     @Volatile var columns = 80
     @Volatile var rows = 24
@@ -119,7 +121,7 @@ class FakeRex(vararg blockIds: String = arrayOf("b1")) : OkHttpClient() {
     }
 
     private fun view() = buildJsonObject {
-        put("revision", 1)
+        put("revision", revision)
         put("session_id", "s1")
         putJsonArray("windows") {
             add(buildJsonObject {
@@ -291,6 +293,18 @@ class FakeRex(vararg blockIds: String = arrayOf("b1")) : OkHttpClient() {
                 put("payload", payload)
             }.toString())
         }
+
+        /** Say the session's view changed, as when a pane is split or a tab added. */
+        fun viewChanged(revision: Long) = event(buildJsonObject {
+            put("type", "session_event")
+            putJsonObject("payload") {
+                put("session_id", "s1")
+                putJsonObject("event") {
+                    put("type", "session_view_changed")
+                    putJsonObject("payload") { put("revision", revision) }
+                }
+            }
+        })
 
         /** Send a terminal block's event, such as "program_status_changed". */
         fun blockEvent(blockId: String, name: String, data: JsonObject) = event(buildJsonObject {

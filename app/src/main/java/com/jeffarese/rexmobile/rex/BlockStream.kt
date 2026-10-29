@@ -145,7 +145,9 @@ class BlockStream(
                 scheduleRetry(e.message ?: "no ticket") { fresh() }
                 return@launch
             }
-            if (!stopped && !paused) open(isFresh = true) { it.send(DataHandshake.hello(ticket).toByteString()) }
+            // A ticket of another shape is a server this app can't speak to, which asking again won't change.
+            val hello = runCatching { DataHandshake.hello(ticket) }.getOrElse { return@launch setState(StreamState.FAILED, "unexpected ticket") }
+            if (!stopped && !paused) open(isFresh = true) { it.send(hello.toByteString()) }
         }
         synchronized(lock) { retryJob = job }
         job.start()
@@ -186,13 +188,14 @@ class BlockStream(
                             val detail = DataHandshake.rejectReasons[reply.reason] ?: "rejected (${reply.reason})"
                             if (reply.reason != 2) token = null
                             forget(webSocket)
-                            scheduleRetry(detail) { resumeOrFresh() }
+                            // A handshake the server can't read fails the same way every time.
+                            if (reply.reason in DataHandshake.PERMANENT_REJECTS) setState(StreamState.FAILED, detail)
+                            else scheduleRetry(detail) { resumeOrFresh() }
                         }
                         is DataHandshake.Welcome -> {
                             welcomed = true
                             token = reply.token
                             keepMs = reply.keepMs
-                            attempts = 0
                             if (isFresh) {
                                 received = 0
                                 parser = TerminalStreamParser(reply.nonce, object : StreamSink {
@@ -205,6 +208,9 @@ class BlockStream(
                                     override fun message(msg: JsonObject) = listener.onMessage(msg)
                                 })
                                 listener.onFresh()
+                            } else {
+                                // Resumed. A fresh stream works once its screen has come: one can be welcomed and dropped each time.
+                                attempts = 0
                             }
                             setState(StreamState.LIVE)
                         }
@@ -215,7 +221,10 @@ class BlockStream(
                 val p = parser ?: return
                 val wasPast = p.pastSnapshot
                 p.push(data)
-                if (!wasPast && p.pastSnapshot) listener.onReady(received)
+                if (!wasPast && p.pastSnapshot) {
+                    attempts = 0
+                    listener.onReady(received)
+                }
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {

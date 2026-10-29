@@ -1267,8 +1267,9 @@ public final class TerminalView extends View {
         } else {
             // Output partway through a synchronized update hasn't been announced, but the lines it scrolled are in
             // history already: a frame drawn meanwhile, as while a finger scrolls, keeps the same lines in view. A
-            // selection waits for the announcement.
+            // selection waits for the announcement, but within the history there is: the update may have cleared it.
             if (!isSelectingText()) followOutput();
+            else mScroll.clamp(historyRows());
 
             // render the terminal view and highlight any selected text
             int[] sel = mDefaultSelectors;

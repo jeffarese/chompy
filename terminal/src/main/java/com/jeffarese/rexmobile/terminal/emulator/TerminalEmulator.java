@@ -344,8 +344,9 @@ public final class TerminalEmulator {
             mSession.write(String.format("\033[<%d;%d;%d" + (pressed ? 'M' : 'm'), mouseButton, column, row));
         } else {
             mouseButton = pressed ? mouseButton : 3; // 3 for release of all buttons.
-            // Clip to screen, and clip to the limits of 8-bit data.
-            boolean out_of_bounds = column > 255 - 32 || row > 255 - 32;
+            // Input reaches Rex as UTF-8 text, so a byte of 0x80 or more can't be sent as itself: the
+            // original encoding stops at column and row 95, past which a report would arrive garbled.
+            boolean out_of_bounds = column > 127 - 32 || row > 127 - 32;
             if (!out_of_bounds) {
                 byte[] data = {'\033', '[', 'M', (byte) (32 + mouseButton), (byte) (32 + column), (byte) (32 + row)};
                 mSession.write(data, 0, data.length);

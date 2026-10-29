@@ -110,6 +110,21 @@ class ReleaseFeedTest {
     }
 
     @Test
+    fun aRefusedTokenFailsWhileTheRepositoryIsPrivate() {
+        // Still private, and the token expired: without it the repository is a 404, not a lack of releases.
+        val fake = FakeGitHub { r -> if (r.header("Authorization") != null) 401 to ByteArray(0) else 404 to ByteArray(0) }
+        val feed = ReleaseFeed("o/r", "expired", client(fake))
+        repeat(2) {
+            try {
+                feed.latest()
+                fail("expected a failure")
+            } catch (e: IOException) {
+                assertEquals("GitHub refused the update token", e.message)
+            }
+        }
+    }
+
+    @Test
     fun noReleaseIsNoUpdateAndOtherAnswersFail() {
         assertNull(ReleaseFeed("o/r", "", client(FakeGitHub { 404 to ByteArray(0) })).latest())
         try {

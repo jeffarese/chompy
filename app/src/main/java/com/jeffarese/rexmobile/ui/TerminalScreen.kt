@@ -159,7 +159,7 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
     var chosenBlock by rememberSaveable(win?.windowId) {
         mutableStateOf(if (win?.windowId == target.windowId) target.blockId else null)
     }
-    val blockIds = win?.blocks?.map { it.blockId }.orEmpty()
+    val blockIds = win?.terminalBlocks?.map { it.blockId }.orEmpty()
     val blockId = chosenBlock?.takeIf { it in blockIds } ?: win?.let(::shownBlock)
 
     val sessionGone = view == null && state.status == ConnStatus.ONLINE && state.sessions.none { it.sessionId == sid }
@@ -620,9 +620,9 @@ private const val FADE_AFTER_MS = 700L
 internal fun screenFaded(host: ConnStatus, stream: StreamState?): Boolean =
     host != ConnStatus.ONLINE || stream == StreamState.RECONNECTING
 
-/** The pane a tab opens to: its zoomed one, else its focused one, else its first. */
+/** The terminal a tab opens to: its zoomed one, else its focused one, else its first. */
 internal fun shownBlock(w: WindowView): String? {
-    val ids = w.blocks.map { it.blockId }
+    val ids = w.terminalBlocks.map { it.blockId }
     return w.zoomedBlockId?.takeIf { it in ids } ?: w.focusedBlockId?.takeIf { it in ids } ?: ids.firstOrNull()
 }
 
