@@ -139,10 +139,13 @@ import com.jeffarese.rexmobile.model.HostConfig
 import com.jeffarese.rexmobile.model.HostConnection
 import com.jeffarese.rexmobile.model.HostState
 import com.jeffarese.rexmobile.model.Liveness
+import com.jeffarese.rexmobile.model.PanePrompt
+import com.jeffarese.rexmobile.model.PanePrompts
 import com.jeffarese.rexmobile.rex.ProgramStatus
 import com.jeffarese.rexmobile.rex.RexCallException
 import com.jeffarese.rexmobile.rex.SessionSummary
 import com.jeffarese.rexmobile.rex.WindowView
+import com.jeffarese.rexmobile.terminal.PromptOption
 import com.jeffarese.rexmobile.R
 import com.jeffarese.rexmobile.ui.onboarding.Problem
 import com.jeffarese.rexmobile.ui.onboarding.classify
@@ -150,6 +153,7 @@ import com.jeffarese.rexmobile.ui.onboarding.hint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -192,6 +196,9 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
     // when the snackbar goes without an Undo, or Home does, so Undo has nothing to take back.
     val cleared = remember { mutableStateMapOf<String, Cleared>() }
     DisposableEffect(Unit) { onDispose { cleared.values.forEach { it.markSeen(model) } } }
+    // Claude's prompts on the Needs you cards, read while Home shows them, and the answers under way.
+    val prompts = remember { BoardPrompts() }
+    val haptics = rememberViewHaptics()
 
     fun setWatchOnly(on: Boolean) {
         watchOnly = on
@@ -211,6 +218,41 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
         }
     }
 
+    /**
+     * Answer [e]'s Claude with [option] of [prompt], then say in the snackbar how that went, as its notification
+     * would. The answer goes on if Home doesn't: only what Home says of it goes with Home.
+     */
+    fun answer(e: BoardEntry, prompt: PanePrompt, option: PromptOption) {
+        if (e.key in prompts.answering) return
+        prompts.answering[e.key] = option
+        haptics.confirm()
+        scope.launch {
+            val result = try {
+                model.scope.async {
+                    model.connection(prompt.hostId)?.let { model.prompts.answer(it, prompt, option) } ?: PanePrompts.Answer.UNREACHABLE
+                }.await()
+            } finally {
+                prompts.answering.remove(e.key)
+            }
+            prompts.answered(e, result)
+            val message = when (result) {
+                PanePrompts.Answer.ANSWERED -> "Answered: ${option.label}"
+                PanePrompts.Answer.UNCONFIRMED -> "Sent ${option.label}, but Claude didn't seem to take it"
+                PanePrompts.Answer.CHANGED -> "Not answered: the screen has changed since"
+                PanePrompts.Answer.UNREACHABLE -> "Not answered: couldn't reach ${e.hostLabel}"
+                // The answer under way says how it went.
+                PanePrompts.Answer.BUSY -> return@launch
+            }
+            // Taken, the card leaves once Claude goes on; otherwise the pane is the place to see why.
+            val open = if (result == PanePrompts.Answer.ANSWERED) null else "Open"
+            snackbar.currentSnackbarData?.dismiss()
+            val opened = snackbar.showSnackbar(
+                message, actionLabel = open, duration = if (open == null) SnackbarDuration.Short else SnackbarDuration.Long,
+            ) == SnackbarResult.ActionPerformed
+            if (opened) onOpen(Target(e.hostId, e.sessionId, e.window.windowId, e.blockId))
+        }
+    }
+
     // Back closes search before it leaves the app.
     BackHandler(enabled = searching) {
         searching = false
@@ -223,6 +265,10 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
     val board = remember(live) { agentBoard(live.map { (c, st) -> c.config to st }) }.filterNot { cleared[it.key]?.hides(it) == true }
     val needsYou = board.count { it.group == BoardGroup.NEEDS_YOU }
     val working = board.count { it.group == BoardGroup.WORKING }
+    // A search hides the board, and with it the answers.
+    if (query.isBlank()) {
+        prompts.ReadScreens(model, board, online = hosts.filter { it.second.status == ConnStatus.ONLINE }.map { it.first.id }.toSet())
+    }
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             delay(30_000)
@@ -320,7 +366,9 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
                         itemsIndexed(entries, key = { _, e -> "agent-${e.key}" }) { i, e ->
                             AgentCard(
                                 e, multiHost, now, first = i == 0, last = i == entries.lastIndex, onOpen,
-                                onClear = if (clearable) ({ clear(listOf(e)) }) else null, Modifier.animateItem(),
+                                onClear = if (clearable) ({ clear(listOf(e)) }) else null,
+                                prompt = prompts.promptOf(e), answering = prompts.answering[e.key],
+                                onAnswer = { p, o -> answer(e, p, o) }, modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -697,6 +745,9 @@ private fun BoardHeader(group: BoardGroup, count: Int, onClear: (() -> Unit)?, m
  * that was; a working one shows its progress when it reports one, and any subtasks under it. A tap opens its
  * terminal, on the very block. The cards of a group join into one rounded box, like a session's tabs below;
  * [first] and [last] round its ends. A swipe either way clears a card that has [onClear].
+ *
+ * With [prompt], the Claude prompt its pane shows, the card offers its answers too, which [onAnswer] gives;
+ * [answering] is the one under way. The rest of the options are a tap away, in the terminal.
  */
 @Composable
 private fun AgentCard(
@@ -707,11 +758,15 @@ private fun AgentCard(
     last: Boolean,
     onOpen: (Target) -> Unit,
     onClear: (() -> Unit)?,
+    prompt: PanePrompt? = null,
+    answering: PromptOption? = null,
+    onAnswer: (PanePrompt, PromptOption) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val status = e.meta.status
     val color = e.group.color()
     val title = blockTitle(e.meta)
+    val detail = agentDetail(e.meta, title)
     val shape = RoundedCornerShape(
         topStart = if (first) 18.dp else 0.dp, topEnd = if (first) 18.dp else 0.dp,
         bottomStart = if (last) 18.dp else 0.dp, bottomEnd = if (last) 18.dp else 0.dp,
@@ -743,7 +798,6 @@ private fun AgentCard(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(title, color = Rex.text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        val detail = agentDetail(e.meta, title)
                         if (detail != null) {
                             Text(
                                 detail, color = if (e.group == BoardGroup.NEEDS_YOU) Rex.blocked else Rex.textDim, fontSize = 13.sp,
@@ -771,6 +825,9 @@ private fun AgentCard(
                     )
                 }
                 Subtasks(e.meta, status, title)
+                if (prompt != null) {
+                    BoardAnswers(prompt, detail, answering, onAnswer = { onAnswer(prompt, it) }, Modifier.padding(start = 38.dp, top = 10.dp))
+                }
             }
         }
     }
