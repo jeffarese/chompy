@@ -4,4 +4,17 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+
+    <!-- What Android 13 and later start the app in while it is light (see MainActivity.startingTheme), so it
+         doesn't open on a flash of dark. -->
+    <style name="Theme.RexMobile.Light">
+        <item name="android:windowBackground">@color/bg_light</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- And while it is as the phone is: light or dark with the phone, from values-night. -->
+    <style name="Theme.RexMobile.System">
+        <item name="android:windowBackground">@color/bg_system</item>
+        <item name="android:windowLightStatusBar">@bool/system_light</item>
+    </style>
 </resources>

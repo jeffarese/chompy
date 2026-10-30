@@ -185,7 +185,12 @@ class AppModel(
             RemoteTerminal.themeColors = colors
             terminals.values.forEach { it.refreshColors() }
         }
+        // For the next launch, to start in it without reading every theme first.
+        theme?.let { t -> scope.launch(keeping) { themes.keep(t) } }
     }
+
+    /** One at a time, in the order worn, so the theme kept is the last one. */
+    private val keeping = Dispatchers.IO.limitedParallelism(1)
 
     init {
         scope.launch {
@@ -198,8 +203,9 @@ class AppModel(
             })
         }
         networkWatch.start()
-        // At once, so the first frame is already in the theme's colors. No terminal is open yet.
-        currentTheme().let { t ->
+        // At once, so the first frame is already in the theme's colors. No terminal is open yet. The theme is
+        // one the app wore before, kept apart from the rest (see Themes), or its own look, which reads none.
+        theme.value.let { t ->
             Rex.wear(t?.let(::paletteOf) ?: Palette.Default)
             RemoteTerminal.themeColors = t?.terminalColors?.takeIf { settings.terminalColorsFromTheme.value }
         }

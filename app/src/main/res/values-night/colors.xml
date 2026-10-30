@@ -1,0 +1,4 @@
+<resources>
+    <color name="bg_system">@color/bg</color>
+    <bool name="system_light">false</bool>
+</resources>

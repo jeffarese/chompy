@@ -1,4 +1,9 @@
 <resources>
     <color name="bg">#FF0E0E12</color>
     <color name="ic_bg">#FF15131C</color>
+    <!-- The default light theme's background, Merino Light's canvas, for starting in the light look. -->
+    <color name="bg_light">#FFF6F7F9</color>
+    <!-- Starting as the phone is: dark in values-night. -->
+    <color name="bg_system">@color/bg_light</color>
+    <bool name="system_light">true</bool>
 </resources>

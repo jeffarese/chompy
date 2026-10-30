@@ -12,6 +12,7 @@ import com.jeffarese.rexmobile.terminal.emulator.TextStyle
 import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -20,6 +21,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import android.os.Looper
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -86,5 +88,30 @@ class ThemesTest {
         model.onConfigurationChanged(dark)
         waitFor("dark") { Rex.palette.dark }
         assertEquals(Palette.Default, Rex.palette)
+    }
+
+    @Test
+    fun theAppsOwnLookReadsNoThemes() {
+        assertFalse(model.themes.allRead)
+    }
+
+    @Test
+    fun aThemeWornIsKeptSoTheNextLaunchStartsInItWithoutReadingThemAll() {
+        model.settings.themeDark.value = "whitby-bay"
+        waitFor("Whitby Bay kept") { File(context.filesDir, Themes.WORN_FILE).exists() }
+        model.settings.appearance.value = Appearance.LIGHT
+        model.settings.themeLight.value = "alpine-milk"
+        waitFor("Alpine Milk kept") { File(context.filesDir, Themes.WORN_FILE).readText().contains("alpine-milk") }
+
+        // Launched again, light: in Alpine Milk from the start, with Whitby Bay still kept for dark.
+        val next = AppModel(context, FakeRex())
+        try {
+            val bg = Rex.bg
+            assertEquals("Whitby Bay", next.themes.byId("whitby-bay")?.name)
+            assertFalse(next.themes.allRead)
+            assertEquals(Color(next.themes.all.first { it.id == "alpine-milk" }.color("canvas")), bg)
+        } finally {
+            next.scope.cancel()
+        }
     }
 }
