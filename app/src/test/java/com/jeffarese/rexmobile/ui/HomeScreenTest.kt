@@ -7,7 +7,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.hasScrollToIndexAction
@@ -104,6 +109,27 @@ class HomeScreenTest {
         rule.onNodeWithText("Can't reach this host").assertExists()
         rule.onNodeWithText("Connecting…").assertDoesNotExist()
         conn.disconnect()
+    }
+
+    @Test
+    fun theSearchBoxsClearButtonIsAFingersWidth() {
+        show()
+        rule.onNodeWithContentDescription("Search").performClick()
+        rule.onNode(hasSetTextAction()).performTextInput("claude")
+        rule.onNodeWithContentDescription("Clear").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp).performClick()
+        rule.onNodeWithText("claude").assertDoesNotExist()
+    }
+
+    @Test
+    @Config(qualifiers = "w1000dp-h700dp")
+    fun onAWideScreenHomeIsAColumnInTheMiddle() {
+        clearHosts()
+        show()
+        val card = rule.onNodeWithText("Connect to a Rex server").getUnclippedBoundsInRoot()
+        // 640dp wide in the middle of 1000dp, and the card's own 16dp margin and 20dp padding inside that.
+        assertEquals(180.dp + 36.dp, card.left)
+        val bar = rule.onNodeWithContentDescription("Search").getUnclippedBoundsInRoot()
+        assertEquals(1000.dp - 180.dp - 18.dp, bar.right)
     }
 
     @Test

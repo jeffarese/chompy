@@ -19,6 +19,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -39,7 +40,9 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -71,16 +74,27 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxDefaults
+import androidx.compose.material3.SwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -98,11 +112,19 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -116,6 +138,7 @@ import com.jeffarese.rexmobile.model.ConnStatus
 import com.jeffarese.rexmobile.model.HostConfig
 import com.jeffarese.rexmobile.model.HostConnection
 import com.jeffarese.rexmobile.model.HostState
+import com.jeffarese.rexmobile.model.Liveness
 import com.jeffarese.rexmobile.rex.ProgramStatus
 import com.jeffarese.rexmobile.rex.RexCallException
 import com.jeffarese.rexmobile.rex.SessionSummary
@@ -125,9 +148,12 @@ import com.jeffarese.rexmobile.ui.onboarding.Problem
 import com.jeffarese.rexmobile.ui.onboarding.classify
 import com.jeffarese.rexmobile.ui.onboarding.hint
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Instant
 
 /** Where to go when a row is tapped. */
@@ -135,6 +161,12 @@ data class Target(val hostId: String, val sessionId: String, val windowId: Strin
 
 /** How long a host with sessions may be away before Home shows them as out of date. */
 private const val STALE_AFTER_MS = 1000L
+
+/** The longest a pull to refresh waits for the hosts to be back before it names those that aren't. */
+internal const val REFRESH_MS = 6_000L
+
+/** How wide Home's content grows: on a tablet, an unfolded phone or in landscape, a column in the middle. */
+private val MAX_CONTENT_WIDTH = 640.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,10 +187,28 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
     val list = rememberLazyListState()
     val context = LocalContext.current
     var updateSheet by remember { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    // Done and failed cards cleared with a swipe or their group's Clear. They hide at once but are marked seen only
+    // when the snackbar goes without an Undo, or Home does, so Undo has nothing to take back.
+    val cleared = remember { mutableStateMapOf<String, Cleared>() }
+    DisposableEffect(Unit) { onDispose { cleared.values.forEach { it.markSeen(model) } } }
 
     fun setWatchOnly(on: Boolean) {
         watchOnly = on
         model.prefs.edit().putBoolean("watch_only", on).apply()
+    }
+
+    fun clear(entries: List<BoardEntry>) {
+        val batch = entries.map { Cleared(it.hostId, it.blockId, it.meta.statuses) }
+        batch.forEach { cleared[it.key] = it }
+        val message = entries.singleOrNull()?.let { "Cleared “${blockTitle(it.meta)}”" }
+            ?: "Cleared ${entries.size} ${entries.first().group.label.lowercase()}"
+        // One still up for an earlier clear goes, which settles that one.
+        snackbar.currentSnackbarData?.dismiss()
+        scope.launch {
+            val undone = snackbar.showSnackbar(message, actionLabel = "Undo", duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed
+            batch.forEach { if (undone) cleared.remove(it.key) else it.markSeen(model) }
+        }
     }
 
     // Back closes search before it leaves the app.
@@ -170,7 +220,7 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
     val stale = rememberStaleHosts(hosts)
     // What an unreachable host last said may no longer be true, so it isn't counted or offered as waiting.
     val live = hosts.filter { it.first.id !in stale }
-    val board = remember(live) { agentBoard(live.map { (c, st) -> c.config to st }) }
+    val board = remember(live) { agentBoard(live.map { (c, st) -> c.config to st }) }.filterNot { cleared[it.key]?.hides(it) == true }
     val needsYou = board.count { it.group == BoardGroup.NEEDS_YOU }
     val working = board.count { it.group == BoardGroup.WORKING }
     val now by produceState(System.currentTimeMillis()) {
@@ -200,15 +250,19 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
         shown.all { h -> h.sessions.all { it.second.isEmpty() } }
 
     val pullState = rememberPullToRefreshState()
-    Box(Modifier.fillMaxSize().background(Rex.bg)) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Rex.bg)) {
+        // Wider than a phone, the list keeps a phone's measure in the middle, and scrolls from anywhere across.
+        val side = ((maxWidth - MAX_CONTENT_WIDTH) / 2).coerceAtLeast(0.dp)
         PullToRefreshBox(
             isRefreshing = refreshing,
             onRefresh = {
                 refreshing = true
-                model.reconnectAll()
                 scope.launch {
-                    delay(900)
+                    val away = refreshHosts(model.connections.value)
                     refreshing = false
+                    if (away.isNotEmpty()) {
+                        Toast.makeText(context, "Still away: ${away.joinToString(", ")}", Toast.LENGTH_SHORT).show()
+                    }
                 }
             },
             state = pullState,
@@ -226,6 +280,7 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
                 modifier = Modifier.fillMaxSize(),
                 // The end clears the bottom bar, and the keyboard when search has it up.
                 contentPadding = PaddingValues(
+                    start = side, end = side,
                     bottom = WindowInsets.navigationBars.union(WindowInsets.ime).asPaddingValues().calculateBottomPadding() + 88.dp,
                 ),
             ) {
@@ -256,9 +311,17 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
                 if (board.isNotEmpty() && query.isBlank()) {
                     val multiHost = live.size > 1
                     board.groupBy { it.group }.toSortedMap().forEach { (group, entries) ->
-                        item("board-${group.name}") { BoardHeader(group, entries.size, Modifier.animateItem()) }
-                        itemsIndexed(entries, key = { _, e -> "agent-${e.hostId}/${e.blockId}" }) { i, e ->
-                            AgentCard(e, multiHost, now, first = i == 0, last = i == entries.lastIndex, onOpen, Modifier.animateItem())
+                        // What's done or failed has only to be looked at, so it can be put away unopened; what needs
+                        // you or still works can't.
+                        val clearable = group == BoardGroup.FAILED || group == BoardGroup.DONE
+                        item("board-${group.name}") {
+                            BoardHeader(group, entries.size, onClear = if (clearable) ({ clear(entries) }) else null, Modifier.animateItem())
+                        }
+                        itemsIndexed(entries, key = { _, e -> "agent-${e.key}" }) { i, e ->
+                            AgentCard(
+                                e, multiHost, now, first = i == 0, last = i == entries.lastIndex, onOpen,
+                                onClear = if (clearable) ({ clear(listOf(e)) }) else null, Modifier.animateItem(),
+                            )
                         }
                     }
                     item("board-end") { Spacer(Modifier.height(6.dp)) }
@@ -335,10 +398,54 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
                     scope.launch { list.animateScrollToItem(0) }
                 } else query = ""
             },
-            modifier = Modifier.align(Alignment.BottomCenter),
+            modifier = Modifier.align(Alignment.BottomCenter).widthIn(max = MAX_CONTENT_WIDTH),
         )
+
+        // Just above the bottom bar, which is 80dp tall.
+        SnackbarHost(
+            snackbar,
+            Modifier.align(Alignment.BottomCenter).widthIn(max = MAX_CONTENT_WIDTH)
+                .navigationBarsPadding().imePadding().padding(start = 16.dp, end = 16.dp, bottom = 80.dp),
+        ) { Snackbar(it, containerColor = Rex.surfaceHigh, contentColor = Rex.text, actionColor = Rex.accent) }
     }
     if (updateSheet) UpdateSheet(model.updater, onDismiss = { updateSheet = false })
+}
+
+/** A card cleared from the board, and the results it showed, so that a newer one shows again. */
+private class Cleared(val hostId: String, val blockId: String, val statuses: List<ProgramStatus>) {
+    val key get() = "$hostId/$blockId"
+    private var marked = false
+
+    fun hides(e: BoardEntry) = e.meta.statuses == statuses
+
+    /** Once only, and only if the agent still shows what was cleared: what it reported since hasn't been seen. */
+    fun markSeen(model: AppModel) {
+        if (marked) return
+        marked = true
+        val conn = model.connection(hostId) ?: return
+        if (conn.state.value.blocks[blockId]?.statuses == statuses) conn.markSeen(blockId)
+    }
+}
+
+/**
+ * Checks every host's connection, as [AppModel.reconnectAll] does, and waits until all are online again, or
+ * [REFRESH_MS] at most. Returns the names of those that aren't.
+ */
+internal suspend fun refreshHosts(connections: List<HostConnection>, timeoutMs: Long = REFRESH_MS): List<String> {
+    val checks = connections.map { c ->
+        val answer = CompletableDeferred<Liveness>()
+        c.connect()
+        c.ensureAlive(force = true) { result, _ -> answer.complete(result) }
+        c to answer
+    }
+    withTimeoutOrNull(timeoutMs) {
+        checks.forEach { (c, answer) ->
+            // One that didn't answer is being replaced, though it may not have gone offline yet.
+            if (answer.await() == Liveness.SILENT) c.state.first { it.status != ConnStatus.ONLINE }
+            c.state.first { it.status == ConnStatus.ONLINE }
+        }
+    }
+    return connections.filter { it.state.value.status != ConnStatus.ONLINE }.map { it.config.label }
 }
 
 /**
@@ -413,7 +520,9 @@ internal data class BoardEntry(
     val blockId: String,
     val meta: BlockMeta,
     val group: BoardGroup,
-)
+) {
+    val key get() = "$hostId/$blockId"
+}
 
 /**
  * Every agent worth a look, grouped and ordered. Blocked and working agents stay while they are; a finished or
@@ -453,15 +562,31 @@ internal fun agentBoard(hosts: List<Pair<HostConfig, HostState>>): List<BoardEnt
 
 /** How long ago [updatedAt] (RFC 3339, the server's clock) was, as "now", "4m", "2h" or "3d"; null if it can't be read. */
 internal fun since(updatedAt: String?, now: Long): String? {
-    val then = updatedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: return null
-    // A server clock a little ahead of the phone's reads as now, not as the future.
-    val mins = ((now - then) / 60_000).coerceAtLeast(0)
+    val mins = minutesSince(updatedAt, now) ?: return null
     return when {
         mins < 1 -> "now"
         mins < 60 -> "${mins}m"
         mins < 24 * 60 -> "${mins / 60}h"
         else -> "${mins / (24 * 60)}d"
     }
+}
+
+/** [since] as a screen reader says it: "just now", "4 minutes ago", "1 hour ago". */
+internal fun spokenSince(updatedAt: String?, now: Long): String? {
+    val mins = minutesSince(updatedAt, now) ?: return null
+    fun ago(n: Long, unit: String) = "$n $unit${if (n == 1L) "" else "s"} ago"
+    return when {
+        mins < 1 -> "just now"
+        mins < 60 -> ago(mins, "minute")
+        mins < 24 * 60 -> ago(mins / 60, "hour")
+        else -> ago(mins / (24 * 60), "day")
+    }
+}
+
+private fun minutesSince(updatedAt: String?, now: Long): Long? {
+    val then = updatedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: return null
+    // A server clock a little ahead of the phone's reads as now, not as the future.
+    return ((now - then) / 60_000).coerceAtLeast(0)
 }
 
 private fun matches(w: WindowView, metas: Map<String, BlockMeta>, q: String): Boolean {
@@ -508,7 +633,14 @@ private fun SearchField(query: String, autoFocus: Boolean, onFocused: () -> Unit
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
         }
-        if (query.isNotEmpty()) Icon(Icons.Outlined.Close, "Clear", tint = Rex.textDim, modifier = Modifier.size(18.dp).clickable { onChange("") })
+        // 18dp to see and 48dp to tap: the button spills past the icon's room rather than making the box taller.
+        if (query.isNotEmpty()) {
+            Box(Modifier.size(18.dp).wrapContentSize(unbounded = true)) {
+                IconButton(onClick = { onChange("") }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Outlined.Close, "Clear", tint = Rex.textDim, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
     }
 }
 
@@ -541,12 +673,22 @@ private fun BoardGroup.color() = when (this) {
     BoardGroup.WORKING -> Rex.working
 }
 
+/** A group's name and count; [onClear], when set, puts all its cards away. */
 @Composable
-private fun BoardHeader(group: BoardGroup, count: Int, modifier: Modifier = Modifier) {
-    Row(modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(group.label, color = group.color(), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-        Spacer(Modifier.width(6.dp))
-        Text("$count", color = Rex.textFaint, fontSize = 13.sp)
+private fun BoardHeader(group: BoardGroup, count: Int, onClear: (() -> Unit)?, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }, verticalAlignment = Alignment.CenterVertically) {
+            Text(group.label, color = group.color(), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Spacer(Modifier.width(6.dp))
+            Text("$count", color = Rex.textFaint, fontSize = 13.sp)
+        }
+        // As small as the name beside it, which keeps the header low; Compose still takes taps within 48dp of it.
+        if (onClear != null) {
+            Text(
+                "Clear", color = Rex.textDim, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(role = Role.Button, onClick = onClear).padding(horizontal = 6.dp),
+            )
+        }
     }
 }
 
@@ -554,7 +696,7 @@ private fun BoardHeader(group: BoardGroup, count: Int, modifier: Modifier = Modi
  * One agent: its program, its task, and what it last said. Waiting, finished and failed cards say how long ago
  * that was; a working one shows its progress when it reports one, and any subtasks under it. A tap opens its
  * terminal, on the very block. The cards of a group join into one rounded box, like a session's tabs below;
- * [first] and [last] round its ends.
+ * [first] and [last] round its ends. A swipe either way clears a card that has [onClear].
  */
 @Composable
 private fun AgentCard(
@@ -564,6 +706,7 @@ private fun AgentCard(
     first: Boolean,
     last: Boolean,
     onOpen: (Target) -> Unit,
+    onClear: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val status = e.meta.status
@@ -573,56 +716,103 @@ private fun AgentCard(
         topStart = if (first) 18.dp else 0.dp, topEnd = if (first) 18.dp else 0.dp,
         bottomStart = if (last) 18.dp else 0.dp, bottomEnd = if (last) 18.dp else 0.dp,
     )
-    Column(
-        // Space under the group's box, before the next group's name.
-        modifier.padding(start = 16.dp, end = 16.dp, bottom = if (last) 4.dp else 0.dp).fillMaxWidth()
-            .clip(shape).background(Rex.surface)
-            .testTag("agent:${e.blockId}")
-            .clickable { onOpen(Target(e.hostId, e.sessionId, e.window.windowId, e.blockId)) },
-    ) {
-        if (!first) HorizontalDivider(color = Rex.divider, thickness = 0.5.dp, modifier = Modifier.padding(start = 52.dp))
-        Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // The group's colour as a dot on the icon's corner, ringed in the card's colour so it sits apart.
-                Box {
-                    ProgramIcon(programOf(e.meta), size = 26.dp)
-                    Box(
-                        Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(11.dp)
-                            .background(Rex.surface, CircleShape).padding(2.dp).background(color, CircleShape),
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, color = Rex.text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val detail = agentDetail(e.meta, title)
-                    if (detail != null) {
-                        Text(
-                            detail, color = if (e.group == BoardGroup.NEEDS_YOU) Rex.blocked else Rex.textDim, fontSize = 13.sp,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+    // Space under the group's box, before the next group's name.
+    SwipeToClear(onClear, modifier.padding(start = 16.dp, end = 16.dp, bottom = if (last) 4.dp else 0.dp)) {
+        Column(
+            Modifier.fillMaxWidth()
+                .clip(shape).background(Rex.surface)
+                .testTag("agent:${e.blockId}")
+                .clickable { onOpen(Target(e.hostId, e.sessionId, e.window.windowId, e.blockId)) }
+                .semantics {
+                    stateDescription = boardState(e, title, now)
+                    if (onClear != null) customActions = listOf(CustomAccessibilityAction("Clear") { onClear(); true })
+                },
+        ) {
+            if (!first) HorizontalDivider(color = Rex.divider, thickness = 0.5.dp, modifier = Modifier.padding(start = 52.dp))
+            Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The group's colour as a dot on the icon's corner, ringed in the card's colour so it sits apart. It
+                    // has nothing to say to a screen reader: the card's state says the group.
+                    Box {
+                        ProgramIcon(programOf(e.meta), size = 26.dp)
+                        Box(
+                            Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(11.dp)
+                                .background(Rex.surface, CircleShape).padding(2.dp).background(color, CircleShape),
                         )
                     }
-                    // Where it runs. The title and message come from the program, so this is what tells a real
-                    // agent from a program dressed up as one in another terminal, as OSC 7501 asks.
-                    val source = agentSource(e, title, showHost)
-                    if (source != null) {
-                        Text(source, color = Rex.textFaint, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(title, color = Rex.text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val detail = agentDetail(e.meta, title)
+                        if (detail != null) {
+                            Text(
+                                detail, color = if (e.group == BoardGroup.NEEDS_YOU) Rex.blocked else Rex.textDim, fontSize = 13.sp,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        // Where it runs. The title and message come from the program, so this is what tells a real
+                        // agent from a program dressed up as one in another terminal, as OSC 7501 asks.
+                        val source = agentSource(e, title, showHost)
+                        if (source != null) {
+                            Text(source, color = Rex.textFaint, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
+                    Spacer(Modifier.width(10.dp))
+                    if (e.group == BoardGroup.WORKING) WorkingDots(color = color)
+                    // Spoken in the card's state, in words rather than as "4m".
+                    else since(status?.updatedAt, now)?.let { Text(it, color = Rex.textFaint, fontSize = 13.sp, modifier = Modifier.clearAndSetSemantics {}) }
                 }
-                Spacer(Modifier.width(10.dp))
-                if (e.group == BoardGroup.WORKING) WorkingDots(color = color)
-                else since(status?.updatedAt, now)?.let { Text(it, color = Rex.textFaint, fontSize = 13.sp) }
+                val progress = status?.progress?.takeIf { e.group == BoardGroup.WORKING }
+                if (progress != null) {
+                    val shown by animateFloatAsState(progress.coerceIn(0, 100) / 100f, tween(400), label = "progress")
+                    LinearProgressIndicator(
+                        progress = { shown }, color = color, trackColor = Rex.surfaceHigh, strokeCap = StrokeCap.Round,
+                        modifier = Modifier.padding(start = 38.dp, top = 8.dp).fillMaxWidth().height(3.dp),
+                    )
+                }
+                Subtasks(e.meta, status, title)
             }
-            val progress = status?.progress?.takeIf { e.group == BoardGroup.WORKING }
-            if (progress != null) {
-                val shown by animateFloatAsState(progress.coerceIn(0, 100) / 100f, tween(400), label = "progress")
-                LinearProgressIndicator(
-                    progress = { shown }, color = color, trackColor = Rex.surfaceHigh, strokeCap = StrokeCap.Round,
-                    modifier = Modifier.padding(start = 38.dp, top = 8.dp).fillMaxWidth().height(3.dp),
-                )
-            }
-            Subtasks(e.meta, status, title)
         }
     }
+}
+
+/**
+ * What a screen reader says of an agent's card after what it reads on it: its group, what it waits for when the
+ * card doesn't already say, and how long ago, as in "Needs you, waiting for permission, 4 minutes ago".
+ */
+internal fun boardState(e: BoardEntry, title: String, now: Long): String {
+    val status = e.meta.status
+    val waitingFor = kindText(status)
+        ?.takeIf { e.group == BoardGroup.NEEDS_YOU && status?.kind in setOf("permission", "question", "auth") && it != agentDetail(e.meta, title) }
+    val ago = spokenSince(status?.updatedAt, now).takeIf { e.group != BoardGroup.WORKING }
+    return listOfNotNull(e.group.label, waitingFor?.replaceFirstChar { it.lowercase() }, ago).joinToString(", ")
+}
+
+/** [content], which a swipe either way slides off and clears when [onClear] is set, with "Clear" showing behind it. */
+@Composable
+private fun SwipeToClear(onClear: (() -> Unit)?, modifier: Modifier, content: @Composable () -> Unit) {
+    if (onClear == null) {
+        Box(modifier) { content() }
+        return
+    }
+    val density = LocalDensity.current
+    val threshold = SwipeToDismissBoxDefaults.positionalThreshold
+    // Not saved with the list's item, as rememberSwipeToDismissBoxState's is: a card back from Undo would come back swiped.
+    val state = remember { SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, density, positionalThreshold = threshold) }
+    LaunchedEffect(state.currentValue) { if (state.currentValue != SwipeToDismissBoxValue.Settled) onClear() }
+    SwipeToDismissBox(
+        state,
+        backgroundContent = {
+            val direction = state.dismissDirection
+            Box(
+                Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                contentAlignment = if (direction == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd,
+            ) {
+                if (direction != SwipeToDismissBoxValue.Settled) Text("Clear", color = Rex.textDim, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            }
+        },
+        modifier = modifier,
+    ) { content() }
 }
 
 /**
@@ -952,6 +1142,7 @@ private fun WindowGroup(
                     modifier = Modifier.testTag("window:${w.windowId}").combinedClickable(
                         enabled = !isClosing,
                         onClick = { onOpen(Target(conn.id, sessionId, w.windowId, null)) },
+                        onLongClickLabel = "Close tab",
                         onLongClick = { menu = true },
                     ),
                 )
@@ -992,9 +1183,12 @@ private fun WindowRow(w: WindowView, metas: Map<String, BlockMeta>, live: Boolea
     val path = prettyPath(meta?.pwd)
     val unseen = w.blocks.any { metas[it.blockId]?.unseen == true }
     val status = meta?.status
+    // Working dots would claim the agent is still at it, which an unreachable host can't confirm.
+    val showState = !(closing || !live && status?.state == "working")
     Row(
         modifier.fillMaxWidth().padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 10.dp)
-            .graphicsLayer { alpha = if (closing) 0.5f else 1f },
+            .graphicsLayer { alpha = if (closing) 0.5f else 1f }
+            .semantics { tabState(status.takeIf { showState }, unseen, closing)?.let { stateDescription = it } },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
@@ -1035,18 +1229,34 @@ private fun WindowRow(w: WindowView, metas: Map<String, BlockMeta>, live: Boolea
         }
         Spacer(Modifier.width(8.dp))
         if (w.blocks.size > 1) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 6.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(end = 6.dp).clearAndSetSemantics { contentDescription = "${w.blocks.size} panes" },
+            ) {
                 Icon(Icons.AutoMirrored.Outlined.ViewQuilt, null, tint = Rex.textFaint, modifier = Modifier.size(14.dp))
                 Text("${w.blocks.size}", color = Rex.textFaint, fontSize = 12.sp)
             }
         }
         when {
             closing -> CircularProgressIndicator(Modifier.padding(end = 6.dp).size(14.dp), strokeWidth = 1.5.dp, color = Rex.textDim)
-            // Working dots would claim the agent is still at it, which an unreachable host can't confirm.
-            !live && status?.state == "working" -> Unit
-            else -> StatusBadge(status, false)
+            !showState -> Unit
+            // The row's state says what the badge shows.
+            else -> Box(Modifier.clearAndSetSemantics {}) { StatusBadge(status, false) }
         }
     }
+}
+
+/** What a screen reader says of a tab after its name: "Working", "Needs you", "Failed" or "Done", and "new" if unseen. */
+internal fun tabState(status: ProgramStatus?, unseen: Boolean, closing: Boolean = false): String? {
+    if (closing) return "Closing"
+    val state = when (status?.state) {
+        "working" -> "Working"
+        "blocked" -> "Needs you"
+        "error" -> "Failed"
+        "done" -> "Done"
+        else -> null
+    }
+    return listOfNotNull(state, "new".takeIf { unseen }).joinToString(", ").replaceFirstChar { it.uppercase() }.ifEmpty { null }
 }
 
 @Composable
@@ -1058,7 +1268,8 @@ fun StatusBadge(status: ProgramStatus?, unseen: Boolean) {
         ) { Text("Needs you", color = Rex.blocked, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
         "done" -> Icon(Icons.Outlined.Check, "Done", tint = Rex.done, modifier = Modifier.padding(end = 6.dp).size(18.dp))
         "error" -> Box(
-            Modifier.padding(end = 6.dp).size(18.dp).clip(CircleShape).background(Rex.error.copy(alpha = 0.2f)),
+            Modifier.padding(end = 6.dp).size(18.dp).clip(CircleShape).background(Rex.error.copy(alpha = 0.2f))
+                .clearAndSetSemantics { contentDescription = "Failed" },
             contentAlignment = Alignment.Center,
         ) { Text("!", color = Rex.error, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
         else -> if (unseen) Box(Modifier.padding(end = 6.dp).size(8.dp).clip(CircleShape).background(Rex.unseen))

@@ -156,4 +156,41 @@ class AgentBoardTest {
         assertEquals(null, since("", now))
         assertEquals(null, since(null, now))
     }
+
+    @Test
+    fun aScreenReaderSaysHowLongAgoInWords() {
+        val now = Instant.parse("2026-10-28T12:00:00Z").toEpochMilli()
+        assertEquals("just now", spokenSince("2026-10-28T11:59:30Z", now))
+        assertEquals("1 minute ago", spokenSince("2026-10-28T11:59:00Z", now))
+        assertEquals("4 minutes ago", spokenSince("2026-10-28T11:56:00Z", now))
+        assertEquals("2 hours ago", spokenSince("2026-10-28T09:30:00Z", now))
+        assertEquals("1 day ago", spokenSince("2026-10-27T11:00:00Z", now))
+        assertEquals(null, spokenSince(null, now))
+    }
+
+    @Test
+    fun aCardsStateSaysItsGroupWhatItWaitsForAndWhen() {
+        val now = Instant.parse("2026-10-28T10:04:00Z").toEpochMilli()
+        fun state(m: BlockMeta) = board("a" to m).single().let { boardState(it, blockTitle(it.meta), now) }
+        assertEquals("Working", state(meta(status("working"))))
+        assertEquals("Done, 4 minutes ago", state(meta(status("done"), unseen = true)))
+        assertEquals("Failed, 4 minutes ago", state(meta(status("error"), unseen = true)))
+        // What it waits for, when the card shows what the program said instead.
+        val asking = ProgramStatus(state = "blocked", kind = "permission", msg = "Run the tests?", updatedAt = "2026-10-28T10:00:00Z")
+        assertEquals("Needs you, waiting for permission, 4 minutes ago", state(meta(asking)))
+        // Not when the card's line already says it.
+        assertEquals("Needs you, 4 minutes ago", state(meta(status("blocked", kind = "permission"))))
+        assertEquals("Needs you, 4 minutes ago", state(meta(status("blocked"))))
+    }
+
+    @Test
+    fun aTabsStateSaysWhatItsBadgeShows() {
+        assertEquals("Working", tabState(status("working"), unseen = false))
+        assertEquals("Needs you, new", tabState(status("blocked"), unseen = true))
+        assertEquals("Failed", tabState(status("error"), unseen = false))
+        assertEquals("Done", tabState(status("done"), unseen = false))
+        assertEquals("New", tabState(null, unseen = true))
+        assertEquals(null, tabState(null, unseen = false))
+        assertEquals("Closing", tabState(status("working"), unseen = false, closing = true))
+    }
 }
