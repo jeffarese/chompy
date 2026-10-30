@@ -18,7 +18,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.junit.After
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -98,10 +97,9 @@ class AppModelTest {
         val t = model.terminal(host, "s1", "b1")
         model.hostStore.update(config.copy(label = "renamed"))
         waitFor("the new connection") { model.connection(config.id).let { it != null && it !== host } }
-        pump(100)
-        // Forgotten, so asking again for the old connection's starts another.
-        val again = model.terminal(host, "s1", "b1")
-        assertNotSame(t, again)
+        // Forgotten, so asking again for the old connection's starts another. The model closes them on the main
+        // thread a moment after the new connection is in, which a busy machine can draw out.
+        waitFor("the old terminal forgotten") { model.terminal(host, "s1", "b1") !== t }
     }
 
     @Test

@@ -94,14 +94,6 @@ class AppModel(
         else combine(list.map { c -> c.state.map { c to it } }) { it.toList() }
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-    /** At the user's asking, such as a pull to refresh: a connection that doesn't answer is replaced. */
-    fun reconnectAll() {
-        _connections.value.forEach {
-            it.connect()
-            it.ensureAlive(force = true)
-        }
-    }
-
     private val _alerts = MutableSharedFlow<Alert>(extraBufferCapacity = 16)
     val alerts: SharedFlow<Alert> = _alerts
 

@@ -428,8 +428,8 @@ private class Cleared(val hostId: String, val blockId: String, val statuses: Lis
 }
 
 /**
- * Checks every host's connection, as [AppModel.reconnectAll] does, and waits until all are online again, or
- * [REFRESH_MS] at most. Returns the names of those that aren't.
+ * At the user's asking, a pull to refresh: checks every host's connection, replacing one that doesn't answer,
+ * and waits until all are online again, or [REFRESH_MS] at most. Returns the names of those that aren't.
  */
 internal suspend fun refreshHosts(connections: List<HostConnection>, timeoutMs: Long = REFRESH_MS): List<String> {
     val checks = connections.map { c ->
