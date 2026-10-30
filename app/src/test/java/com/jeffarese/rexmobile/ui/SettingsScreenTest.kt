@@ -14,6 +14,8 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
 import com.jeffarese.rexmobile.RexMobileApp
@@ -196,6 +198,23 @@ class SettingsScreenTest {
         settings.haptics.value = true
         rule.waitForIdle()
         assertSame(system, seen)
+    }
+
+    @Test
+    fun sectionTitlesAreHeadings() {
+        show()
+        rule.onNode(hasText("Look") and isHeading()).assertExists()
+        rule.onNode(hasText("Hosts") and isHeading()).assertDoesNotExist()
+    }
+
+    @Test
+    @Config(qualifiers = "w1000dp-h700dp-xhdpi")
+    fun onAWideScreenTheCardsStayReadablyNarrowAndCentered() {
+        show()
+        // The Hosts row, a button as wide as its card, as wide as the column.
+        val row = rule.onNodeWithText("Hosts").getUnclippedBoundsInRoot()
+        assertEquals(180f, row.left.value, 1f)
+        assertEquals(820f, row.right.value, 1f)
     }
 
     @Test

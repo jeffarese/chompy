@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -84,6 +83,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -209,7 +210,7 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onHosts: () -> Unit, onS
         }
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.navigationBarsPadding(),
+            contentPadding = readableListPadding(), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.navigationBarsPadding(),
         ) {
             item {
                 Card {
@@ -447,11 +448,12 @@ private object NoHaptics : HapticFeedback {
     override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) = Unit
 }
 
+/** A section's name: a heading to a screen reader, which can then move from one section to the next. */
 @Composable
 private fun SectionTitle(text: String) {
     Text(
         text, color = Rex.textDim, fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
-        modifier = Modifier.padding(start = 4.dp, top = 14.dp, bottom = 2.dp),
+        modifier = Modifier.padding(start = 4.dp, top = 14.dp, bottom = 2.dp).semantics { heading() },
     )
 }
 
@@ -605,7 +607,7 @@ private fun ArrangePage(
     }
     fun move(i: Int, by: Int) = change(shown.toMutableList().apply { add(i + by, removeAt(i)) })
     SubPage(title, onBack) {
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(contentPadding = readableListPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { Text(detail, color = Rex.textDim, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)) }
             item { SectionTitle("Shown") }
             item {
@@ -694,7 +696,7 @@ private fun ThemesPage(model: AppModel, onBack: () -> Unit) {
         if (appearance != Appearance.SYSTEM) settings.appearance.value = if (isDark) Appearance.DARK else Appearance.LIGHT
     }
     SubPage("Theme", onBack) {
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(contentPadding = readableListPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Text(
                     "Rex's own themes, as on the Mac. With Appearance as the phone is, the app wears your dark one or your light one.",
@@ -779,7 +781,7 @@ private fun LicensesPage(onBack: () -> Unit) {
         }
     }
     SubPage("Open-source licenses", onBack) {
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(contentPadding = readableListPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Card {
                     NOTICES.forEachIndexed { i, (name, license) ->
@@ -825,7 +827,7 @@ private fun ReportPage(title: String, report: String, clipLabel: String, copyLab
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
     SubPage(title, onBack) {
-        Column(Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).readableWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Long lines wrap inside the card: scrolled sideways, they ran past its edge and padding.
             Text(
                 report, color = Rex.text, fontFamily = Rex.mono, fontSize = 11.sp,
