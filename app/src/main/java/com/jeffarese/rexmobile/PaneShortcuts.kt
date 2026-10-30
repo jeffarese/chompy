@@ -61,9 +61,12 @@ class PaneShortcuts(private val context: Context) {
             .setRank(0)
             .build()
         runCatching { ShortcutManagerCompat.pushDynamicShortcut(context, shortcut) }
-        val ids = listOf(id) + (recent - id)
-        remove(ids.drop(MAX))
-        recent = ids.take(MAX)
+        // Off the main thread, while [prune] may be changing the list on it.
+        synchronized(this) {
+            val ids = listOf(id) + (recent - id)
+            remove(ids.drop(MAX))
+            recent = ids.take(MAX)
+        }
     }
 
     /**
@@ -71,10 +74,12 @@ class PaneShortcuts(private val context: Context) {
      * has them. A host that isn't connected says nothing either way. [states] are by host id.
      */
     fun prune(hostIds: Set<String>, states: Map<String, HostState>) {
-        val gone = recent.filter { closed(it, hostIds, states) }
-        if (gone.isEmpty()) return
-        remove(gone)
-        recent = recent - gone.toSet()
+        synchronized(this) {
+            val gone = recent.filter { closed(it, hostIds, states) }
+            if (gone.isEmpty()) return
+            remove(gone)
+            recent = recent - gone.toSet()
+        }
     }
 
     private fun remove(ids: List<String>) {
