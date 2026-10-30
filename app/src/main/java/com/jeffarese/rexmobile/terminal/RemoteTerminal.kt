@@ -962,10 +962,9 @@ class RemoteTerminal(
     }
 
     /**
-     * Answer the prompt on screen with one of its options. A numbered option is picked by typing its
-     * number, which in Claude Code picks it at once (or ticks it, in a multi-select question) whatever
-     * is highlighted; others are reached with the arrow keys from the highlighted one. A yes/no
-     * answer is typed, then entered only if the program reads a whole line (see [InputQueue]).
+     * Answer the prompt on screen with one of its options, with the keys [ScreenPrompt.menuKeys]
+     * gives for a menu. A yes/no answer is typed, then entered only if the program reads a whole
+     * line (see [InputQueue]).
      *
      * Does nothing unless [prompt] is still the one on screen, as read from a live stream: a card
      * drawn from an older screen could otherwise answer a different question. Main thread.
@@ -980,15 +979,7 @@ class RemoteTerminal(
                 stopWheel()
                 input.offer(InputQueue.Item.Answer(chosen.answer ?: chosen.label.take(1).lowercase()))
             }
-            ScreenPrompt.Kind.MENU -> {
-                val number = chosen.number
-                if (number != null && number in 1..9) return sendKey(RemoteKey.digit(number))
-                // From the highlight on screen now, which may have moved since the card was drawn.
-                val from = current.options.indexOfFirst { it.selected }
-                if (from < 0) return
-                repeat(abs(to - from)) { sendKey(if (to > from) RemoteKey.DOWN else RemoteKey.UP) }
-                sendKey(RemoteKey.ENTER)
-            }
+            ScreenPrompt.Kind.MENU -> current.menuKeys(to)?.forEach(::sendKey)
         }
     }
 

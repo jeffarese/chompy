@@ -131,6 +131,21 @@ data class ScreenPrompt(
     /** The tab on screen, by index in [tabs]; null when the screen's colours weren't read. */
     val currentTab: Int? get() = tabs.indexOfFirst { it.current == true }.takeIf { it >= 0 }
 
+    /**
+     * The keys that pick option [index] of this menu as it is on screen. A numbered option is picked
+     * by its number, which in Claude Code picks it at once (or ticks it, in a multi-select question)
+     * whatever is highlighted; others are reached with the arrow keys from the highlighted one, then
+     * Enter. Null if there is no such option, or nothing is highlighted to count from.
+     */
+    fun menuKeys(index: Int): List<RemoteKey>? {
+        val number = (options.getOrNull(index) ?: return null).number
+        if (number != null && number in 1..9) return listOf(RemoteKey.digit(number))
+        // From the highlight on screen now, which may have moved since the option was offered.
+        val from = options.indexOfFirst { it.selected }
+        if (from < 0) return null
+        return List(abs(index - from)) { if (index > from) RemoteKey.DOWN else RemoteKey.UP } + RemoteKey.ENTER
+    }
+
     enum class Kind {
         /** A numbered menu, such as Claude Code's permission prompts and questions. */
         MENU,
