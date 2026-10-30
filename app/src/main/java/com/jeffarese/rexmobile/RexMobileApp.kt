@@ -18,4 +18,10 @@ class RexMobileApp : Application() {
         // Loading the fonts takes a moment, which the first terminal opened would otherwise spend on the main thread.
         thread(name = "fonts") { com.jeffarese.rexmobile.ui.RexFonts.prewarm() }
     }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // Terminals keep their history in native memory, which only they can give back. A model not started has none.
+        if (modelStarted) model.onTrimMemory(level)
+    }
 }

@@ -1,8 +1,10 @@
 package com.jeffarese.rexmobile.model
 
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
 import android.content.Intent
+import android.net.ConnectivityManager
 import androidx.core.content.ContextCompat
 import com.jeffarese.rexmobile.BuildConfig
 import com.jeffarese.rexmobile.WatchService
@@ -266,9 +268,10 @@ class AppModel(
         terminals[blockId] = t
         t.start()
         while (terminals.size > MAX_TERMINALS) {
-            val eldest = terminals.entries.first()
-            terminals.remove(eldest.key)
-            eldest.value.close()
+            // One opened ahead of time and never looked at goes first, then the one looked at longest ago.
+            val gone = terminals.values.firstOrNull { !it.viewed && it !== t } ?: terminals.values.first()
+            terminals.remove(gone.blockId)
+            gone.close()
         }
         return t
     }
@@ -276,12 +279,30 @@ class AppModel(
     /**
      * Start streaming a block that may be looked at next, such as the tab beside the one on screen,
      * so it shows at once. One already streaming is left where it is in the recent order, and none
-     * starts while the app is away. Main thread only.
+     * starts while the app is away, on mobile data, or when it would close a terminal that was
+     * looked at, such as the one on screen. Main thread only.
      */
     fun prewarm(host: HostConnection, sessionId: String, blockId: String) {
         // Not terminals[blockId], which would count as a visit in the recent order.
         if (!foreground || terminals.entries.any { it.key == blockId && it.value.host === host }) return
+        // A guess at what comes next isn't worth data that costs, the way the updater sees it.
+        if (context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered ?: true) return
+        if (terminals.size >= MAX_TERMINALS && terminals.values.all { it.viewed }) return
         terminal(host, sessionId, blockId)
+    }
+
+    /**
+     * The system wants memory back. Once the app is out of sight, every terminal compresses its
+     * history and lets go of the rows read from it; when memory runs low, paused terminals not on
+     * screen close as well, to open again when looked at. Main thread only.
+     */
+    @Suppress("DEPRECATION") // The levels still come, though Android 14 stopped sending some to apps.
+    fun onTrimMemory(level: Int) {
+        if (level < ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) return
+        terminals.values.forEach { it.trimMemory() }
+        if (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) return
+        val visible = visibleBlockId
+        closeTerminals { it.paused && it.blockId != visible }
     }
 
     /** Forget a block's terminal, such as when the block closed. Main thread only. */
