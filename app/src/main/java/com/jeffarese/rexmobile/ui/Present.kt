@@ -159,7 +159,7 @@ private val GLYPH_ALIASES = mapOf(
 )
 
 /** The name of the Rex glyph for [program], as Rex.app picks it: any shell gets its Shell card, others go by name, then alias. */
-private fun glyphName(program: String): String? = when {
+internal fun glyphName(program: String): String? = when {
     program in SHELLS -> "terminal"
     program.startsWith("claude") -> "claude"
     program.startsWith("python") -> "python"

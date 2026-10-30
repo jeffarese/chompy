@@ -2,15 +2,20 @@ package com.jeffarese.rexmobile
 
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.rememberTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -20,6 +25,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -27,7 +33,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import android.graphics.Color as AndroidColor
+import com.jeffarese.rexmobile.model.Appearance
 import com.jeffarese.rexmobile.model.Notifier
 import com.jeffarese.rexmobile.ui.AlertBanner
 import com.jeffarese.rexmobile.ui.CrashScreen
@@ -41,6 +49,10 @@ import com.jeffarese.rexmobile.ui.Target
 import com.jeffarese.rexmobile.ui.TerminalScreen
 import com.jeffarese.rexmobile.ui.onboarding.FirstRun
 import com.jeffarese.rexmobile.ui.onboarding.OnboardingScreen
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private sealed interface Screen {
     data object Welcome : Screen
@@ -88,6 +100,21 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
 
+    /**
+     * The theme Android starts the app in next time, before any of its code runs: light while the app is,
+     * so it doesn't open on a flash of dark. Android keeps it from one launch to the next. Before Android 13
+     * the app always starts dark, until [onCreate] sets the window's background.
+     */
+    private fun startingTheme(appearance: Appearance) {
+        if (Build.VERSION.SDK_INT < 33) return
+        val theme = when (appearance) {
+            Appearance.DARK -> R.style.Theme_RexMobile
+            Appearance.LIGHT -> R.style.Theme_RexMobile_Light
+            Appearance.SYSTEM -> R.style.Theme_RexMobile_System
+        }
+        runCatching { splashScreen.setSplashScreenTheme(theme) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Not again when the activity is recreated, which would open it over wherever the user went since.
         if (savedInstanceState == null) paneRequest = intent?.paneRequest()
@@ -95,9 +122,14 @@ class MainActivity : ComponentActivity() {
         if (CrashLog.read(this) == null) (application as RexMobileApp).model
         barsFor(Rex.palette.dark)
         super.onCreate(savedInstanceState)
+        // Until Compose draws, and wherever it hasn't yet, such as behind the keyboard as it opens: the
+        // theme's background rather than the dark one the app starts in.
+        window.setBackgroundDrawable(ColorDrawable(Rex.bg.toArgb()))
         setContent {
             val dark = Rex.palette.dark
             LaunchedEffect(dark) { barsFor(dark) }
+            val bg = Rex.bg
+            LaunchedEffect(bg) { window.setBackgroundDrawable(ColorDrawable(bg.toArgb())) }
             RexTheme {
                 // After a crash, show what happened before starting the part of the app that crashed.
                 var crash by remember { mutableStateOf(CrashLog.read(this)) }
@@ -109,6 +141,8 @@ class MainActivity : ComponentActivity() {
                     return@RexTheme
                 }
                 val model = remember { (application as RexMobileApp).model }
+                val appearance by model.settings.appearance.flow.collectAsState()
+                LaunchedEffect(appearance) { startingTheme(appearance) }
                 val firstRun = remember { FirstRun(this) }
                 var stack by remember {
                     mutableStateOf(listOf(if (firstRun.shouldShow(model.hostStore.hosts.value)) Screen.Welcome else Screen.Home))
@@ -116,7 +150,26 @@ class MainActivity : ComponentActivity() {
                 val screen = stack.last()
                 // Whether the last move went back, for the direction screens slide: Settings is under Hosts.
                 var back by remember { mutableStateOf(false) }
-                val nav = updateTransition(screen, label = "nav")
+                val navState = remember { SeekableTransitionState(screen) }
+                val nav = rememberTransition(navState, label = "nav")
+                // How far a back swipe has gone, while there is one.
+                var swipe by remember { mutableStateOf<Float?>(null) }
+                val swiped = swipe
+                if (swiped != null) {
+                    // The screen follows the finger, with the one under it showing through.
+                    LaunchedEffect(swiped) { navState.seekTo(swiped, targetState = stack[stack.size - 2]) }
+                } else {
+                    LaunchedEffect(screen) {
+                        if (navState.currentState != screen) {
+                            // On from wherever a finished swipe left it.
+                            navState.animateTo(screen)
+                        } else if (navState.targetState != screen) {
+                            // A swipe let go of before the end: spring back, then stay.
+                            animate(navState.fraction, 0f, animationSpec = spring()) { f, _ -> launch { navState.seekTo(f) } }
+                            navState.snapTo(screen)
+                        }
+                    }
+                }
                 fun push(s: Screen) {
                     // A double tap would push the same screen twice, so the first Back seemed to do nothing; a tap
                     // landing while the last move is still on its way (or sliding in) is as unmeant.
@@ -128,8 +181,32 @@ class MainActivity : ComponentActivity() {
                     back = true
                     if (stack.size > 1) stack = stack.dropLast(1)
                 }
-                BackHandler(enabled = stack.size > 1) { pop() }
+                // Back as Android 14 and later show it: a swipe peeks at the screen under this one. A press of
+                // a back button, or Back from a test, comes with no progress and goes back at once.
+                PredictiveBackHandler(enabled = stack.size > 1) { progress ->
+                    back = true
+                    try {
+                        progress.collect { swipe = it.progress }
+                        swipe = null
+                        pop()
+                    } catch (e: CancellationException) {
+                        swipe = null
+                        throw e
+                    }
+                }
                 val saved = rememberSaveableStateHolder()
+                val shortcuts = remember { PaneShortcuts(this) }
+                LaunchedEffect(screen) {
+                    val target = (screen as? Screen.Terminal)?.target ?: return@LaunchedEffect
+                    val state = model.connection(target.hostId)?.state?.value ?: return@LaunchedEffect
+                    // Drawing its icon and telling the launcher take a moment: not while the terminal opens.
+                    withContext(Dispatchers.Default) { shortcuts.opened(target, state) }
+                }
+                LaunchedEffect(Unit) {
+                    model.hostStates.collect { states ->
+                        shortcuts.prune(model.hostStore.hosts.value.map { it.id }.toSet(), states.associate { (c, st) -> c.id to st })
+                    }
+                }
 
                 HapticsFromSettings(model.settings) { Box(Modifier.fillMaxSize().background(Rex.bg)) {
                     nav.AnimatedContent(

@@ -33,6 +33,8 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.OverScroller;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import androidx.annotation.RequiresApi;
 
@@ -1669,6 +1671,7 @@ public final class TerminalView extends View {
 
         showTextSelectionCursors(event);
         mClient.copyModeChanged(isSelectingText());
+        if (Build.VERSION.SDK_INT >= 33) SelectionBack.update(this);
 
         invalidate();
     }
@@ -1677,6 +1680,40 @@ public final class TerminalView extends View {
         if (hideTextSelectionCursors()) {
             mClient.copyModeChanged(isSelectingText());
             invalidate();
+        }
+        if (Build.VERSION.SDK_INT >= 33) SelectionBack.update(this);
+    }
+
+    /** While text is selected, Back ends the selection, as onKeyPreIme's back key did: see {@link SelectionBack}. */
+    private Object mSelectionBack;
+
+    /**
+     * Once an app takes back gestures itself (enableOnBackInvokedCallback), Android 13 and later send it
+     * no back key, so onKeyPreIme never sees one. While selecting, the view asks for Back instead, ahead
+     * of the app's own screens.
+     */
+    @RequiresApi(33)
+    private static final class SelectionBack {
+        final OnBackInvokedDispatcher dispatcher;
+        final OnBackInvokedCallback callback;
+
+        SelectionBack(OnBackInvokedDispatcher dispatcher, OnBackInvokedCallback callback) {
+            this.dispatcher = dispatcher;
+            this.callback = callback;
+        }
+
+        static void update(TerminalView view) {
+            SelectionBack current = (SelectionBack) view.mSelectionBack;
+            if (view.isSelectingText() && current == null) {
+                OnBackInvokedDispatcher dispatcher = view.findOnBackInvokedDispatcher();
+                if (dispatcher == null) return;
+                OnBackInvokedCallback callback = view::stopTextSelectionMode;
+                dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, callback);
+                view.mSelectionBack = new SelectionBack(dispatcher, callback);
+            } else if (!view.isSelectingText() && current != null) {
+                current.dispatcher.unregisterOnBackInvokedCallback(current.callback);
+                view.mSelectionBack = null;
+            }
         }
     }
 
