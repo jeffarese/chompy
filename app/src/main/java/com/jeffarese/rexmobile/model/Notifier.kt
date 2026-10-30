@@ -26,8 +26,9 @@ import com.jeffarese.rexmobile.terminal.ScreenPrompt
  * has updated itself.
  *
  * Each kind of alert has a channel of its own, so Android's settings can quiet one and not the
- * others: Needs you pops up over the screen, the rest only sound. A pane alerts at most once every
- * [QUIET_MS]; what it posts in between updates its notification without a sound.
+ * others: Needs you pops up over the screen, the rest only sound. Once a pane has alerted, what it
+ * posts in the next [QUIET_MS] updates its notification without a sound, unless it is more urgent:
+ * Claude needing the user just after it finished alerts all the same.
  *
  * @param now the clock that spacing is measured on.
  */
@@ -101,7 +102,7 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
             .setAutoCancel(true)
             .setContentIntent(openPane(alert.hostId, alert.sessionId, alert.blockId))
             // An agent flipping between states updates its notification without buzzing each time.
-            .setSilent(!pacer.alerts(alert.blockId))
+            .setSilent(!pacer.alerts(alert.blockId, alert.kind))
         if (prompt != null) {
             offered(prompt).forEach { builder.addAction(answerAction(prompt, it, alert.title, hostLabel)) }
             builder.addExtras(bundleOf(EXTRA_SEEN_AT to prompt.seenAt))
@@ -275,7 +276,7 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_HOST_LABEL = "host_label"
 
-        /** How long a pane's later posts stay quiet after it alerted. */
+        /** How long a pane's later posts, if no more urgent, stay quiet after it alerted. */
         const val QUIET_MS = 30_000L
         /** How long "Answered" shows before the notification goes. */
         private const val ANSWERED_SHOWN_MS = 4_000L
@@ -338,29 +339,43 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
 }
 
 /**
- * Which of a pane's posts alert: one at most every [quietMs]. The posts in between update its
- * notification without a sound or a pop-up, so an agent flipping between states can't buzz again
- * and again, while other panes alert as ever.
+ * Which of a pane's posts alert. One no more urgent than an alert the pane gave in the last [quietMs]
+ * updates its notification without a sound or a pop-up, so an agent flipping between states can't
+ * buzz again and again. A more urgent one alerts all the same: Needs you just after Finished, say,
+ * which a quiet update would leave for the user to stumble on. Other panes alert as ever.
  */
 internal class AlertPacer(private val now: () -> Long, private val quietMs: Long = Notifier.QUIET_MS) {
-    private val alertedAt = HashMap<String, Long>()
+    /** When each pane last alerted at each urgency, by the pane and the urgency. */
+    private val alertedAt = HashMap<Pair<String, Int>, Long>()
 
-    /** True if a post for [blockId] alerts now, which then counts as its last alert. */
+    /** True if a post of [kind] for [blockId] alerts now, which then counts as its last alert at that urgency. */
     @Synchronized
-    fun alerts(blockId: String): Boolean {
+    fun alerts(blockId: String, kind: Alert.Kind): Boolean {
         val t = now()
-        val last = alertedAt[blockId]
-        if (last != null && t - last < quietMs) return false
-        alertedAt[blockId] = t
+        val urgency = urgencyOf(kind)
+        val said = (urgency..MOST_URGENT).any { u -> alertedAt[blockId to u]?.let { t - it < quietMs } == true }
+        if (said) return false
+        alertedAt[blockId to urgency] = t
         return true
     }
 
     /** The pane's next post alerts, as after the user has seen it. */
     @Synchronized
     fun forget(blockId: String) {
-        alertedAt.remove(blockId)
+        alertedAt.keys.removeAll { it.first == blockId }
     }
 
     @Synchronized
     fun forgetAll() = alertedAt.clear()
+
+    private companion object {
+        const val MOST_URGENT = 2
+
+        /** How much an alert of [kind] asks of the user: needing them most, then a result, then a program's own say. */
+        fun urgencyOf(kind: Alert.Kind) = when (kind) {
+            Alert.Kind.BLOCKED -> MOST_URGENT
+            Alert.Kind.DONE, Alert.Kind.ERROR -> 1
+            Alert.Kind.BELL, Alert.Kind.NOTIFICATION -> 0
+        }
+    }
 }

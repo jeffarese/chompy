@@ -60,7 +60,7 @@ class NotifierTest {
     }
 
     @Test
-    fun aPaneAlertsAtMostOnceEveryThirtySeconds() {
+    fun anAgentFlippingBetweenStatesAlertsOnceEveryThirtySeconds() {
         val notifier = notifier()
         notifier.post(alert("b1", Alert.Kind.BLOCKED), "mac")
         assertFalse(posted("b1").quiet)
@@ -89,6 +89,32 @@ class NotifierTest {
         notifier.cancel("b1")
         notifier.post(alert("b1", Alert.Kind.BLOCKED), "mac")
         assertFalse(posted("b1").quiet)
+    }
+
+    @Test
+    fun moreUrgentNewsAlertsWithinTheThirtySeconds() {
+        val notifier = notifier()
+        // Claude finishes, then asks for permission soon after, as for a message queued meanwhile.
+        notifier.post(alert("b1", Alert.Kind.DONE), "mac")
+        assertFalse(posted("b1").quiet)
+        now += 10_000
+        notifier.post(alert("b1", Alert.Kind.BLOCKED), "mac")
+        assertFalse(posted("b1").quiet)
+        // Finishing or needing the user again so soon after is quiet.
+        now += 10_000
+        notifier.post(alert("b1", Alert.Kind.DONE), "mac")
+        assertTrue(posted("b1").quiet)
+        notifier.post(alert("b1", Alert.Kind.BLOCKED), "mac")
+        assertTrue(posted("b1").quiet)
+
+        // A program's own notification is the least of them: a result just after one alerts.
+        notifier.post(alert("b2", Alert.Kind.NOTIFICATION), "mac")
+        assertFalse(posted("b2").quiet)
+        now += 1_000
+        notifier.post(alert("b2", Alert.Kind.ERROR), "mac")
+        assertFalse(posted("b2").quiet)
+        notifier.post(alert("b2", Alert.Kind.NOTIFICATION), "mac")
+        assertTrue(posted("b2").quiet)
     }
 
     @Test

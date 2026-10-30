@@ -146,7 +146,8 @@ app uses it:
 - Notifications for agents that need you, finish or fail, through a foreground service you opt into
   (the welcome offers it, and Settings › Alerts). Needs you pops up; finished and failed agents and
   programs' own notifications have channels of their own, so Android's settings can quiet one and
-  not the others. A pane that alerts again within 30 s updates its notification without a sound.
+  not the others. A pane that alerts again within 30 s updates its notification without a sound,
+  unless the news is more urgent: Claude needing you just after it finished still sounds.
   Each one opens its pane, Claude's prompts can be answered from it once the phone is unlocked, and
   the Settings page says when notification permission or battery limits would stop them.
 - Back closes search before it leaves the app, and a quick double tap opens one screen, not two.
