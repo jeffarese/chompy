@@ -1,8 +1,15 @@
 package com.jeffarese.rexmobile.ui.onboarding
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings as SystemSettings
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -50,7 +57,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,9 +84,7 @@ import com.jeffarese.rexmobile.R
 import com.jeffarese.rexmobile.model.AppModel
 import com.jeffarese.rexmobile.model.HostStore
 import com.jeffarese.rexmobile.ui.Rex
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.jeffarese.rexmobile.ui.readableWidth
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.jeffarese.rexmobile.model.NetworkWatch
@@ -89,19 +96,26 @@ val AddressKeyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction
 private const val TAILSCALE_PLAY = "https://play.google.com/store/apps/details?id=com.tailscale.ipn"
 
 /**
- * The first-run walkthrough: what the app is, what to turn on on the Mac and this phone, and then
- * adding the Mac with a connection test. Every step can be skipped; [onDone] goes to Home.
+ * The first-run walkthrough: what the app is, what to turn on on the Mac and this phone, adding the Mac
+ * with a connection test, and then whether to notify when away. Every step can be skipped; [onDone]
+ * goes to Home.
  */
 @Composable
 fun OnboardingScreen(model: AppModel, onDone: () -> Unit) {
     var step by rememberSaveable { mutableStateOf(0) }
-    BackHandler(enabled = step > 0) { step-- }
+    // Once the Mac is added, going back would only offer to add it again: Back leaves, as Skip does.
+    val added = step == NOTIFY_STEP
+    BackHandler(enabled = step > 0) { if (added) onDone() else step-- }
+    // Already on, as when the welcome is shown again from Settings, there is nothing to ask.
+    fun onAdded() {
+        if (model.settings.watchInBackground.value) onDone() else step = NOTIFY_STEP
+    }
 
-    Column(Modifier.fillMaxSize().background(Rex.bg).statusBarsPadding().navigationBarsPadding().imePadding()) {
+    Column(Modifier.fillMaxSize().background(Rex.bg).statusBarsPadding().navigationBarsPadding().imePadding().readableWidth()) {
         Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (step > 0) IconButton(onClick = { step-- }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = Rex.text) }
+            if (step > 0 && !added) IconButton(onClick = { step-- }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", tint = Rex.text) }
             else Spacer(Modifier.width(48.dp))
-            StepDots(step, count = 3, modifier = Modifier.weight(1f))
+            StepDots(step, count = NOTIFY_STEP + 1, modifier = Modifier.weight(1f))
             TextButton(onClick = onDone) { Text("Skip", color = Rex.textDim) }
         }
         AnimatedContent(
@@ -116,11 +130,15 @@ fun OnboardingScreen(model: AppModel, onDone: () -> Unit) {
             when (s) {
                 0 -> WelcomeStep(onNext = { step = 1 })
                 1 -> MacStep(onNext = { step = 2 })
-                else -> ConnectStep(model, onDone)
+                2 -> ConnectStep(model, onAdded = ::onAdded)
+                else -> NotifyStep(model, onDone)
             }
         }
     }
 }
+
+/** The last step, once a host is added. */
+private const val NOTIFY_STEP = 3
 
 @Composable
 private fun StepDots(step: Int, count: Int, modifier: Modifier = Modifier) {
@@ -246,7 +264,7 @@ private fun Command(command: String, note: String) {
 }
 
 @Composable
-private fun ConnectStep(model: AppModel, onDone: () -> Unit) {
+private fun ConnectStep(model: AppModel, onAdded: () -> Unit) {
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     val context = LocalContext.current
@@ -263,23 +281,15 @@ private fun ConnectStep(model: AppModel, onDone: () -> Unit) {
         scope.launch { probe = step.connect(address, label) }
     }
 
-    fun scan() {
-        val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
-        runCatching {
-            GmsBarcodeScanning.getClient(context, options).startScan()
-                .addOnSuccessListener { code ->
-                    val scanned = code.rawValue?.let(::addressFromCode)
-                    if (scanned == null) {
-                        probe = Probe.Invalid("That code has no Rex address in it. Use the one rex server tailscale pair shows.")
-                    } else {
-                        address = scanned.removePrefix("https://")
-                        probe = Probe.Idle
-                        connect()
-                    }
-                }
-                .addOnFailureListener { probe = Probe.Invalid("Couldn't open the scanner: ${it.message}") }
-        }.onFailure { probe = Probe.Invalid("Couldn't open the scanner on this phone") }
-    }
+    fun scan() = scanPairingCode(
+        context,
+        onAddress = { scanned ->
+            address = scanned.removePrefix("https://")
+            probe = Probe.Idle
+            connect()
+        },
+        onProblem = { probe = Probe.Invalid(it) },
+    )
 
     // Waiting for Tailscale: carry on by itself once it connects, which shows as a change of network,
     // or when the user comes back from its app.
@@ -299,12 +309,12 @@ private fun ConnectStep(model: AppModel, onDone: () -> Unit) {
 
     StepLayout(
         action = when {
-            connected != null -> "Open Chompy"
+            connected != null -> if (model.settings.watchInBackground.value) "Open Chompy" else "Next"
             probe == Probe.Testing -> "Connecting…"
             probe is Probe.Failed -> "Try again"
             else -> "Connect"
         },
-        onAction = { if (connected != null) onDone() else connect() },
+        onAction = { if (connected != null) onAdded() else connect() },
         enabled = probe != Probe.Testing,
     ) {
         Text("Add your Mac", style = MaterialTheme.typography.headlineMedium, color = Rex.text)
@@ -385,9 +395,90 @@ private fun ConnectStep(model: AppModel, onDone: () -> Unit) {
                     }
                 }
                 // The Mac may just be asleep or offline right now.
-                TextButton(onClick = { if (step.addAnyway(address, label) != null) onDone() }) {
+                TextButton(onClick = { if (step.addAnyway(address, label) != null) onAdded() }) {
                     Text("Add it anyway", color = Rex.accent)
                 }
+            }
+        }
+    }
+}
+
+/**
+ * What the welcome promised: a notification when an agent needs you. Turns on Notify when away as
+ * Settings' switch does, asking for notifications on Android 13 and later, then says what still stands
+ * in its way, as Settings does.
+ */
+@Composable
+internal fun NotifyStep(model: AppModel, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val settings = model.settings
+    val watching by settings.watchInBackground.flow.collectAsState()
+    // Read again on each return, as from Android's settings, where the user may have just changed them.
+    var resumed by remember { mutableIntStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumed++ }
+    val notificationsOn = remember(resumed, watching) { model.notifier.enabled }
+    val batteryFree = remember(resumed, watching) {
+        context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) != false
+    }
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { resumed++ }
+
+    StepLayout(
+        action = if (watching) "Open Chompy" else "Notify me",
+        onAction = {
+            if (watching) onDone()
+            else {
+                settings.watchInBackground.value = true
+                if (Build.VERSION.SDK_INT >= 33 && !model.notifier.enabled) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        },
+    ) {
+        Text("Know when you're needed", style = MaterialTheme.typography.headlineMedium, color = Rex.text)
+        Text(
+            "Chompy can stay connected after you leave, so a notification says when an agent needs you, finishes or fails. " +
+                "Android shows that Chompy is running while it does.",
+            color = Rex.textDim,
+        )
+        if (!watching) {
+            TextButton(onClick = onDone, contentPadding = PaddingValues(0.dp), modifier = Modifier.height(32.dp)) {
+                Text("Not now", color = Rex.accent)
+            }
+            Text("Notify when away is in Settings, under Alerts, for later.", color = Rex.textFaint, fontSize = 13.sp)
+            return@StepLayout
+        }
+        ResultCard {
+            Dot(Rex.online)
+            Column {
+                Text("Notify when away is on", color = Rex.text, fontWeight = FontWeight.Medium)
+                Text("Settings, under Alerts, turns it off.", color = Rex.textDim, fontSize = 13.sp)
+            }
+        }
+        if (!notificationsOn) {
+            FixCard("Notifications are off for Chompy", "Turn them on to hear from your agents", "Turn them on") {
+                context.startActivity(
+                    Intent(SystemSettings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(SystemSettings.EXTRA_APP_PACKAGE, context.packageName),
+                )
+            }
+        }
+        if (!batteryFree) {
+            FixCard("Let Chompy run in the background", "Otherwise the phone may close it to save battery, and the notifications stop", "Allow") {
+                @SuppressLint("BatteryLife")
+                val ask = Intent(SystemSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+                context.startActivity(ask)
+            }
+        }
+    }
+}
+
+/** Something still to do on the phone, and the button that goes there. */
+@Composable
+private fun FixCard(title: String, body: String, action: String, onAction: () -> Unit) {
+    ResultCard {
+        Dot(Rex.blocked)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, color = Rex.text, fontWeight = FontWeight.Medium)
+            Text(body, color = Rex.textDim, fontSize = 13.sp, lineHeight = 18.sp)
+            TextButton(onClick = { runCatching(onAction) }, contentPadding = PaddingValues(0.dp), modifier = Modifier.height(32.dp)) {
+                Text(action, color = Rex.accent)
             }
         }
     }

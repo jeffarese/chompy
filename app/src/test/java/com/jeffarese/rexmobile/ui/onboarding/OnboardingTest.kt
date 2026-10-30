@@ -2,9 +2,14 @@ package com.jeffarese.rexmobile.ui.onboarding
 
 import android.content.Context
 import android.os.Looper
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import com.jeffarese.rexmobile.MainActivity
@@ -65,6 +70,24 @@ class OnboardingTest {
             compose.onNodeWithText("Get started").assertExists()
             compose.onNodeWithText("Skip").performClick()
             compose.onNodeWithText("Connect to a Rex server").assertExists()
+            assertTrue(FirstRun(context).done)
+        }
+    }
+
+    @Test
+    fun onceTheMacIsAddedTheWelcomeOffersNotifyWhenAway() {
+        val port = ServerSocket(0).use { it.localPort }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            shadowOf(Looper.getMainLooper()).idle()
+            compose.onNodeWithText("Get started").performClick()
+            compose.onNodeWithText("I've done this").performClick()
+            compose.onNode(hasSetTextAction() and hasText("Address")).performTextInput("http://127.0.0.1:$port")
+            compose.onNodeWithText("Connect").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Add it anyway").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Add it anyway").performScrollTo().performClick()
+            compose.onNodeWithText("Notify me").assertExists()
+            compose.onNodeWithText("Not now").performScrollTo().performClick()
+            compose.onNodeWithText("Notify me").assertDoesNotExist()
             assertTrue(FirstRun(context).done)
         }
     }

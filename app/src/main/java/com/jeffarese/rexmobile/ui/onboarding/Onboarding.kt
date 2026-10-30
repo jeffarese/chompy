@@ -3,6 +3,9 @@ package com.jeffarese.rexmobile.ui.onboarding
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.jeffarese.rexmobile.model.HostConfig
 import com.jeffarese.rexmobile.model.HostStore
 import com.jeffarese.rexmobile.rex.ControlConnection
@@ -95,6 +98,24 @@ fun addressFromCode(text: String): String? {
         }
     val candidate = carried ?: url ?: trimmed
     return (checkAddress(candidate) as? AddressCheck.Ok)?.url
+}
+
+/**
+ * Scan a pairing code with Play services' scanner, which needs no camera permission. [onAddress] gets
+ * the address in it, from [addressFromCode]; [onProblem] what to tell the user when there is none.
+ * Cancelling the scan calls neither.
+ */
+fun scanPairingCode(context: Context, onAddress: (url: String) -> Unit, onProblem: (message: String) -> Unit) {
+    val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+    runCatching {
+        GmsBarcodeScanning.getClient(context, options).startScan()
+            .addOnSuccessListener { code ->
+                val scanned = code.rawValue?.let(::addressFromCode)
+                if (scanned == null) onProblem("That code has no Rex address in it. Use the one rex server tailscale pair shows.")
+                else onAddress(scanned)
+            }
+            .addOnFailureListener { onProblem("Couldn't open the scanner: ${it.message}") }
+    }.onFailure { onProblem("Couldn't open the scanner on this phone") }
 }
 
 /** A Tailscale address, which needs Tailscale on this phone to reach. */

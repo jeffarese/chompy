@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,12 +25,14 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +63,7 @@ import com.jeffarese.rexmobile.rex.ControlConnection
 import com.jeffarese.rexmobile.ui.onboarding.AddressCheck
 import com.jeffarese.rexmobile.ui.onboarding.AddressKeyboard
 import com.jeffarese.rexmobile.ui.onboarding.checkAddress
+import com.jeffarese.rexmobile.ui.onboarding.scanPairingCode
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -83,7 +86,7 @@ fun HostsScreen(model: AppModel, onBack: () -> Unit) {
             Text("Hosts", style = MaterialTheme.typography.titleLarge, color = Rex.text, modifier = Modifier.weight(1f))
             IconButton(onClick = { adding = true }) { Icon(Icons.Outlined.Add, "Add host", tint = Rex.text) }
         }
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.navigationBarsPadding()) {
+        LazyColumn(contentPadding = readableListPadding(), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.navigationBarsPadding()) {
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Rex.surface)) {
                     if (hosts.isEmpty()) {
@@ -187,6 +190,7 @@ private fun HostDialog(store: HostStore, host: HostConfig?, onClose: () -> Unit)
     var address by remember(host) { mutableStateOf(host?.url?.removePrefix("https://") ?: "") }
     var error by remember(host) { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
+    val context = LocalContext.current
 
     fun save() {
         val url = when (val check = checkHostAddress(address, store.hosts.value, host)) {
@@ -206,6 +210,24 @@ private fun HostDialog(store: HostStore, host: HostConfig?, onClose: () -> Unit)
         title = { Text(if (host == null) "Add a host" else "Edit host") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // The Mac's pairing code, as in the welcome: the scanned address fills the field, to name and save.
+                OutlinedButton(
+                    onClick = {
+                        scanPairingCode(
+                            context,
+                            onAddress = { scanned ->
+                                address = scanned.removePrefix("https://")
+                                error = null
+                            },
+                            onProblem = { error = it },
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.QrCodeScanner, null, tint = Rex.accent)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Scan pairing code", color = Rex.text)
+                }
                 OutlinedTextField(
                     address, { address = it; error = null },
                     label = { Text("Address") }, placeholder = { Text("studio-rex.tail1234.ts.net") }, singleLine = true,
