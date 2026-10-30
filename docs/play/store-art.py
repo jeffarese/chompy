@@ -1,5 +1,5 @@
 """Chompy's Play graphics: the 512 px icon, the 1024x500 feature graphic, the six phone screenshots and a
-1920x1080 promo-video backdrop.
+1920x1080 promo-video backdrop; and the feature graphic again at 1280x640, as GitHub's social preview.
 
     python3 docs/play/store-art.py      # from the repository's root; needs Pillow
 
@@ -141,9 +141,9 @@ SHOTS = [
     ("5_claude_controls", "Claude's controls", "at hand",
      "Effort, model and commands, right above the keyboard",
      None),
-    ("6_themes", "All 41 of", "Rex's themes",
-     "The same themes as on the Mac, dark and light",
-     ((42, 490, 1038, 646), 40, 1.08)),
+    ("6_themes", "Themes for", "day and night",
+     "15 of Chompy's own, each with terminal colors to match",
+     ((42, 646, 1038, 794), 40, 1.08)),
 ]
 W, H = 1080, 1920
 HEAD, SUB = ImageFont.truetype(BOLD, 84), ImageFont.truetype(REG, 38)
@@ -229,26 +229,40 @@ wide = backdrop()
 for i, shot in enumerate(SHOTS):
     screenshot(wide.crop((i * W, 0, (i + 1) * W, H)), *shot)
 
-# Feature graphic, 1024x500: the name on the left, the board in a phone and Chompy on the right. Play may
-# crop the edges and put a play button in the middle, so both keep clear of them.
-fg = Image.new("RGBA", (1024, 500), PLUM)
-fg.alpha_composite(glow(fg.size, (760, 320), 250, ORANGE, 96))
-fg.alpha_composite(glow(fg.size, (860, 150), 190, VIOLET, 84))
-fg.alpha_composite(glow(fg.size, (650, 380), 200, MAGENTA, 70))
-fg.alpha_composite(glow(fg.size, (160, 520), 220, MAGENTA, 40))
-# The phone runs off the bottom edge, below the board's cards.
-board, _, _ = phone(Image.open(f"{shots_in}/1_board.png"), 300)
-fx, fy = 1024 - 86 - 300, 38
-fg.alpha_composite(shadow(fg.size, (fx, fy, fx + 300, fy + board.height), 28, 18, 210, (0, 10)))
-fg.alpha_composite(board, (fx, fy))
-mascot = fit(body, 262)
-fg.alpha_composite(mascot, (576, 500 - mascot.height - 20))
-d = ImageDraw.Draw(fg)
-d.text((70, 118), "Chompy", font=ImageFont.truetype(BOLD, 100), fill=(255, 255, 255, 255))
-tag = ImageFont.truetype(BOLD, 32)
-gradient_text(fg, (74, 268), "Your coding agents,", tag)
-gradient_text(fg, (74, 314), "on your phone.", tag)
-save(fg, f"{out_listing}/featureGraphic.png")
+def feature(size, scale):
+    """The feature graphic: the name and what it is on the left, a board of agents in a phone on the right, one in
+    each state with nothing to answer (docs/demo/still.sh), and Chompy beside it, off the screen. Laid out at
+    1024x500 and drawn at [scale]. Play may crop the edges and put a play button in the middle, so both keep clear
+    of them."""
+    w, h = size
+    def px(v):
+        return round(v * scale)
+    fg = Image.new("RGBA", size, PLUM)
+    fg.alpha_composite(glow(size, (px(760), px(320)), px(250), ORANGE, 96))
+    fg.alpha_composite(glow(size, (px(860), px(150)), px(190), VIOLET, 84))
+    fg.alpha_composite(glow(size, (px(640), px(400)), px(200), MAGENTA, 70))
+    fg.alpha_composite(glow(size, (px(160), h + px(20)), px(220), MAGENTA, 40))
+    # The phone runs off the bottom edge, below the board's cards and above its buttons, wherever the graphic is
+    # taller than its layout.
+    board, _, _ = phone(Image.open(f"{shots_in}/feature_board.png"), px(300))
+    fx, fy = w - px(86 + 300), px(38) + h - px(500)
+    fg.alpha_composite(shadow(size, (fx, fy, fx + px(300), fy + board.height), px(28), px(18), 210, (0, px(10))))
+    fg.alpha_composite(board, (fx, fy))
+    # Standing at the phone's side, below where a play button would go.
+    mascot = fit(body, px(186))
+    fg.alpha_composite(mascot, (fx - mascot.width + px(26), h - mascot.height - px(12)))
+    d = ImageDraw.Draw(fg)
+    d.text((px(70), px(104)), "Chompy", font=ImageFont.truetype(BOLD, px(100)), fill=(255, 255, 255, 255))
+    tag = ImageFont.truetype(BOLD, px(32))
+    gradient_text(fg, (px(74), px(250)), "Your coding agents,", tag)
+    gradient_text(fg, (px(74), px(296)), "on your phone.", tag)
+    d.text((px(75), px(362)), "A client for Rex", font=ImageFont.truetype(REG, px(24)), fill=MUTED)
+    return fg
+
+
+save(feature((1024, 500), 1), f"{out_listing}/featureGraphic.png")
+# GitHub's social preview, 1280x640, the same a quarter larger: Settings › Social preview takes it.
+save(feature((1280, 640), 1.25), f"{repo}/docs/media/social-preview.png")
 
 
 def text_block(canvas, x, y, scale):

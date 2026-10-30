@@ -91,20 +91,20 @@ class SettingsScreenTest {
     fun aThemeIsWornAtOnceAndALightOneMakesTheAppLight() {
         show()
         scrollTo("Theme").performClick()
-        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Whitby Bay"))
-        rule.onNodeWithText("Whitby Bay").performClick()
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Panthalassa"))
+        rule.onNodeWithText("Panthalassa").performClick()
         rule.waitForIdle()
-        assertEquals("whitby-bay", settings.themeDark.value)
-        assertEquals(Color(0xFF272A38), Rex.bg)
+        assertEquals("panthalassa", settings.themeDark.value)
+        assertEquals(Color(0xFF091A30), Rex.bg)
         assertTrue(Rex.palette.dark)
 
-        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Alpine Milk"))
-        rule.onNodeWithText("Alpine Milk").performClick()
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Chalk"))
+        rule.onNodeWithText("Chalk").performClick()
         rule.waitForIdle()
         assertEquals(Appearance.LIGHT, settings.appearance.value)
-        assertEquals("alpine-milk", settings.themeLight.value)
+        assertEquals("chalk", settings.themeLight.value)
         assertFalse(Rex.palette.dark)
-        assertEquals(Color(0xFFFAFAFA), Rex.bg)
+        assertEquals(Color(0xFFFAFBFC), Rex.bg)
 
         // Back to the app's own look.
         rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("This app's own"))

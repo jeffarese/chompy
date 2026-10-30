@@ -1,0 +1,1 @@
+Chompy has 15 themes of its own, 9 dark and 6 light, each with terminal colors to match, in place of Rex's. If you had one of Rex's themes on, the app goes back to its own look: pick a new one in Settings › Look › Theme.

@@ -248,7 +248,7 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onHosts: () -> Unit, onS
                             Appearance.DARK -> model.themes.name(themeDark)
                             Appearance.LIGHT -> model.themes.name(themeLight)
                             Appearance.SYSTEM -> "${model.themes.name(themeDark)} when dark, ${model.themes.name(themeLight)} when light"
-                        } + ", from Rex's themes",
+                        },
                         onClick = { page = Page.THEMES },
                     ) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = Rex.textDim) }
                     Divider()
@@ -747,7 +747,7 @@ private fun SubPage(title: String, onBack: () -> Unit, content: @Composable Colu
 }
 
 /**
- * Rex's themes, dark then light, each with a swatch of its colors. Choosing one wears it at once,
+ * The app's themes, dark then light, each with a swatch of its colors. Choosing one wears it at once,
  * and a light one chosen while the app is dark (or a dark one while light) makes it so.
  */
 @Composable
@@ -766,7 +766,7 @@ private fun ThemesPage(model: AppModel, onBack: () -> Unit) {
         LazyColumn(contentPadding = readableListPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Text(
-                    "Rex's own themes, as on the Mac. With Appearance as the phone is, the app wears your dark one or your light one.",
+                    "Each theme colors the terminals too. With Appearance as the phone is, the app wears your dark one or your light one.",
                     color = Rex.textDim, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
                 )
             }
@@ -793,7 +793,7 @@ private fun ThemesPage(model: AppModel, onBack: () -> Unit) {
     }
 }
 
-/** Red, green, yellow and blue from the emulator's own palette, for the Rex look's swatch. */
+/** Red, green, yellow and blue from the emulator's own palette, for the app's own look's swatch. */
 private val DEFAULT_SWATCH = listOf(Color(0xFFCD0000), Color(0xFF00CD00), Color(0xFFCDCD00), Color(0xFF6495ED))
 
 /** A theme's red, green, yellow and blue, as its terminals show them. */

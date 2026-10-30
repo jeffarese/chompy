@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.test.core.app.ApplicationProvider
 import com.jeffarese.rexmobile.model.Themes
+import com.jeffarese.rexmobile.terminal.emulator.TextStyle
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -12,7 +13,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** Text reads at 4.5:1 or better on the cards and canvas of the app's own look and of every one of Rex's themes. */
+/** Text reads at 4.5:1 or better on the cards and canvas of the app's own look and of every one of its themes. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class PaletteContrastTest {
@@ -29,7 +30,24 @@ class PaletteContrastTest {
 
     @Test
     fun everyThemeIsChecked() {
-        assertEquals(42, palettes.size)
+        assertEquals(16, palettes.size)
+    }
+
+    @Test
+    fun statusesAccentAndTerminalColorsAreReadable() {
+        for ((name, p) in palettes) {
+            for ((what, c) in listOf("working" to p.working, "needs you" to p.blocked, "done" to p.done, "failed" to p.error)) {
+                assertReadable("$name's $what", p.worst(c))
+            }
+        }
+        for (t in themes) {
+            val p = paletteOf(t)
+            assertReadable("${t.name}'s accent", p.worst(p.accent))
+            assertReadable("${t.name}'s text on its accent", Palette.contrast(p.onAccent, p.accent))
+            // Red, green, yellow, blue, magenta and cyan, and their bright ones, on the terminal's background.
+            val bg = Color(t.terminalColors[TextStyle.COLOR_INDEX_BACKGROUND])
+            for (i in (1..6) + (9..14)) assertReadable("${t.name}'s terminal color $i", Palette.contrast(Color(t.terminalColors[i]), bg))
+        }
     }
 
     @Test

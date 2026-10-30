@@ -191,7 +191,9 @@ app uses it:
 Each program in a tab shows its own logo on its brand's colour, from [Simple Icons](https://simpleicons.org)
 (CC0), [Lobe Icons](https://github.com/lobehub/lobe-icons) (MIT) and [Iconify's logos](https://github.com/gilbarbara/logos)
 (CC0) or the project's own repository, with [Lucide](https://lucide.dev) (ISC) glyphs for generic
-programs and ones whose logo isn't free to use ([`art/glyphs`](art/glyphs) lists each one's source and [license](art/glyphs/GLYPH-LICENSES.txt)). Settings › Look has all 41 of Rex's themes.
+programs and ones whose logo isn't free to use ([`art/glyphs`](art/glyphs) lists each one's source and [license](art/glyphs/GLYPH-LICENSES.txt)). Settings › Look has 15 themes of
+Chompy's own, 9 dark and 6 light, each with terminal colors to match. [`art/themes/themes.py`](art/themes/themes.py)
+makes them from a few colors each, and keeps every status, accent and terminal color at 4.5:1 or more.
 
 ## Measured, not assumed
 

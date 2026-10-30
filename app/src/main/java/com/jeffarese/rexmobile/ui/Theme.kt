@@ -22,7 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
-/** The app's colors: its own dark look, or made from one of Rex's themes with [paletteOf]. */
+/** The app's colors: its own dark look, or made from one of its themes with [paletteOf]. */
 @Immutable
 data class Palette(
     val dark: Boolean,
@@ -122,18 +122,15 @@ data class Palette(
 }
 
 
-/**
- * A Rex theme's colors for this app. Rex's surfaces suit a desktop's panes, so the cards, menus and
- * keys here are steps from the canvas toward the text instead, as the app's own look is.
- */
+/** A theme's colors for this app: its cards, menus and keys are steps from the canvas toward the text, as the app's own look's are. */
 fun paletteOf(theme: RexTheme): Palette {
     fun c(token: String) = Color(theme.color(token))
     val bg = c("canvas")
     val text = c("content")
     fun step(f: Float) = lerp(bg, text, if (theme.dark) f else f * 0.8f)
     val surface = step(0.055f)
-    // Rex's tertiary text reads at about 3:1, too faint for the times, folders and subtasks it carries here. It is
-    // brought up to READABLE, and the secondary kept a step above it.
+    // The tertiary text carries times, folders and subtasks, so it reads at READABLE at least, and the secondary a step
+    // above it. art/themes/themes.py makes them so already: this keeps it true of a card's colors too.
     val cards = listOf(bg, surface)
     val faint = Palette.legible(c("contentTertiary"), text, cards)
     val dim = Palette.legible(c("contentSecondary"), text, cards, Palette.contrastOn(faint, cards) * Palette.DIM_OVER_FAINT)

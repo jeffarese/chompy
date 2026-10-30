@@ -27,7 +27,7 @@ NATIVE TO ANDROID
 • Notifications for agents that need you, finish or fail, each on its own channel
 • Pairing by scanning the code from rex server tailscale pair
 • Material 3, predictive back, TalkBack labels, and your last panes on the app icon's long press
-• All 41 of Rex's themes
+• 15 themes of its own, dark and light, with terminal colors to match
 
 WHAT YOU NEED
 

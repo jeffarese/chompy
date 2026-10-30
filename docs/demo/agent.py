@@ -4,6 +4,11 @@ the app shows its cards and controls for them and they take the keys those send.
 
 Usage: agent.py <role> <start-file>
 It waits until <start-file> exists, so every agent starts together when the recording does.
+
+    agent.py still <start-file> <app> <state> <title> <msg> <folder>
+
+stands still in one state instead, for the feature graphic's board (still.sh): it reports it once started, with
+nothing on its screen for the app to make an answer of.
 """
 import base64
 import os
@@ -369,4 +374,14 @@ def gemini():
         i += 1
 
 
-{"claude": claude, "claude-asks": claude_asks, "codex": codex, "terraform": terraform, "cargo": cargo, "gemini": gemini}[ROLE]()
+def still():
+    app, state, title, msg, folder = sys.argv[3:8]
+    pwd(folder)
+    status("idle", app=app, title=title)
+    wait_start()
+    status(state, app=app, title=title, msg=msg)
+    say(f"{BOLD}{app}{RESET} {title}\n\n{msg}")
+    time.sleep(3600)
+
+
+{"still": still, "claude": claude, "claude-asks": claude_asks, "codex": codex, "terraform": terraform, "cargo": cargo, "gemini": gemini}[ROLE]()

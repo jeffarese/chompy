@@ -15,8 +15,8 @@ enum class Appearance(val label: String) {
 }
 
 /**
- * One of Rex's themes, as copied from the Mac app's themes.json: its UI colors
- * by Rex's token names, and its terminal colors.
+ * One of Chompy's themes, from art/themes/themes.py: its UI colors by token name, and its terminal
+ * colors.
  */
 @Serializable
 data class RexTheme(
@@ -48,7 +48,7 @@ data class RexTheme(
 }
 
 /**
- * Rex's themes, read once from the app's assets, and the app's own look beside them. Reading them all
+ * Chompy's themes, read once from the app's assets, and its own look beside them. Reading them all
  * takes a while, so the ones the app last wore, a dark one and a light one, are also kept in a small
  * file: a launch in one of them wears it without reading the rest.
  */
@@ -71,7 +71,7 @@ class Themes(private val context: Context) {
         RexJson.decodeFromString(Worn.serializer(), wornFile.readText()).takeIf { it.version == BuildConfig.VERSION_CODE }?.themes
     }.getOrNull().orEmpty().also { worn = it }
 
-    /** The theme with [id], or null for the app's own look (or a theme a Rex update took away). */
+    /** The theme with [id], or null for the app's own look (or a theme since taken away, such as Rex's, which it had until 0.4.3). */
     fun byId(id: String): RexTheme? {
         if (id == DEFAULT) return null
         // Once they are all read, from there: the same theme is then always the same object.
@@ -95,12 +95,12 @@ class Themes(private val context: Context) {
     private class Worn(val version: Int, val themes: List<RexTheme>)
 
     companion object {
-        const val ASSET = "rex-themes.json"
+        const val ASSET = "themes.json"
         /** In the app's files: the themes it last wore. */
         const val WORN_FILE = "worn-themes.json"
         /** The app's own dark look, from before it had themes. */
         const val DEFAULT = "rex"
         const val DEFAULT_NAME = "Chompy"
-        const val DEFAULT_LIGHT = "merino-light"
+        const val DEFAULT_LIGHT = "sandstone"
     }
 }

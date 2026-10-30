@@ -175,6 +175,8 @@ class Settings(context: Context, private val prefs: SharedPreferences) {
         const val STAY_CONNECTED = "stay_connected_s"
         const val WATCH_IN_BACKGROUND = "watch_in_background"
         const val CLASSIC_OFFER_DISMISSED = "classic_offer_dismissed"
+        /** Themes chosen that the app no longer has have been forgotten (AppModel). */
+        const val LOST_THEMES_FORGOTTEN = "lost_themes_forgotten"
 
         /** Blocks come and go: only the most recent dismissals are worth keeping. */
         const val MAX_CLASSIC_DISMISSED = 50

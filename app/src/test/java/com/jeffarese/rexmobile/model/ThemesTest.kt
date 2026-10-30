@@ -47,15 +47,33 @@ class ThemesTest {
     }
 
     @Test
-    fun rexsThemesAreAllThere() {
+    fun theThemesAreAllThere() {
         val all = model.themes.all
-        assertEquals(41, all.size)
-        assertEquals(27, all.count { it.dark })
-        val whitby = model.themes.byId("whitby-bay")!!
-        assertEquals(TextStyle.NUM_INDEXED_COLORS, whitby.terminalColors.size)
-        assertEquals(0xff2c2f3c.toInt(), whitby.terminalColors[TextStyle.COLOR_INDEX_BACKGROUND])
+        assertEquals(15, all.size)
+        assertEquals(9, all.count { it.dark })
+        val ocean = model.themes.byId("panthalassa")!!
+        assertEquals(TextStyle.NUM_INDEXED_COLORS, ocean.terminalColors.size)
+        assertEquals(0xff091a30.toInt(), ocean.terminalColors[TextStyle.COLOR_INDEX_BACKGROUND])
+        assertEquals("Sandstone", model.themes.name(Themes.DEFAULT_LIGHT))
         assertNull(model.themes.byId(Themes.DEFAULT))
         assertEquals("Chompy", model.themes.name(Themes.DEFAULT))
+    }
+
+    @Test
+    fun aThemeTheAppNoLongerHasGivesWayToItsOwnLook() {
+        // The model every test has made has looked already: as an app that hadn't yet, with themes chosen before 0.4.3,
+        // from Rex's.
+        val prefs = context.getSharedPreferences("ui", Context.MODE_PRIVATE)
+        waitFor("the first look") { prefs.getBoolean(Settings.LOST_THEMES_FORGOTTEN, false) }
+        prefs.edit().remove(Settings.LOST_THEMES_FORGOTTEN)
+            .putString(Settings.THEME_DARK, "whitby-bay").putString(Settings.THEME_LIGHT, "alpine-milk").commit()
+        val next = AppModel(context, FakeRex())
+        try {
+            waitFor("the app's own look") { next.settings.themeDark.value == Themes.DEFAULT }
+            waitFor("the default light theme") { next.settings.themeLight.value == Themes.DEFAULT_LIGHT }
+        } finally {
+            next.scope.cancel()
+        }
     }
 
     @Test
@@ -66,19 +84,19 @@ class ThemesTest {
 
     @Test
     fun aThemeColorsTheAppAndTheTerminalsUnlessTheyKeepTheMacs() {
-        model.settings.themeDark.value = "whitby-bay"
-        waitFor("Whitby Bay") { Rex.bg == Color(0xFF272A38) }
-        assertSame(model.themes.byId("whitby-bay")!!.terminalColors, RemoteTerminal.themeColors)
+        model.settings.themeDark.value = "panthalassa"
+        waitFor("Panthalassa") { Rex.bg == Color(0xFF091A30) }
+        assertSame(model.themes.byId("panthalassa")!!.terminalColors, RemoteTerminal.themeColors)
 
         model.settings.terminalColorsFromTheme.value = false
         waitFor("the Mac's terminal colors") { RemoteTerminal.themeColors == null }
-        assertEquals(Color(0xFF272A38), Rex.bg)
+        assertEquals(Color(0xFF091A30), Rex.bg)
     }
 
     @Test
     fun asThePhoneIsFollowsDarkMode() {
         model.settings.appearance.value = Appearance.SYSTEM
-        model.settings.themeLight.value = "alpine-milk"
+        model.settings.themeLight.value = "chalk"
         val light = Configuration(context.resources.configuration).apply {
             uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.UI_MODE_NIGHT_NO
         }
@@ -97,19 +115,19 @@ class ThemesTest {
 
     @Test
     fun aThemeWornIsKeptSoTheNextLaunchStartsInItWithoutReadingThemAll() {
-        model.settings.themeDark.value = "whitby-bay"
-        waitFor("Whitby Bay kept") { File(context.filesDir, Themes.WORN_FILE).exists() }
+        model.settings.themeDark.value = "panthalassa"
+        waitFor("Panthalassa kept") { File(context.filesDir, Themes.WORN_FILE).exists() }
         model.settings.appearance.value = Appearance.LIGHT
-        model.settings.themeLight.value = "alpine-milk"
-        waitFor("Alpine Milk kept") { File(context.filesDir, Themes.WORN_FILE).readText().contains("alpine-milk") }
+        model.settings.themeLight.value = "chalk"
+        waitFor("Chalk kept") { File(context.filesDir, Themes.WORN_FILE).readText().contains("chalk") }
 
-        // Launched again, light: in Alpine Milk from the start, with Whitby Bay still kept for dark.
+        // Launched again, light: in Chalk from the start, with Panthalassa still kept for dark.
         val next = AppModel(context, FakeRex())
         try {
             val bg = Rex.bg
-            assertEquals("Whitby Bay", next.themes.byId("whitby-bay")?.name)
+            assertEquals("Panthalassa", next.themes.byId("panthalassa")?.name)
             assertFalse(next.themes.allRead)
-            assertEquals(Color(next.themes.all.first { it.id == "alpine-milk" }.color("canvas")), bg)
+            assertEquals(Color(next.themes.all.first { it.id == "chalk" }.color("canvas")), bg)
         } finally {
             next.scope.cancel()
         }

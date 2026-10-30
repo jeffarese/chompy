@@ -77,8 +77,10 @@ little longer at some of them, for the last banner to go and the note's card to 
   Run `adb shell wm size 1080x1920` first, and `adb shell wm size reset` after. They go in
   `docs/play/shots`: `board` as `1_board.png`, the notification (below) as `2_notification.png`,
   `permission` as `3_permission.png`, `note-open` as `4_note.png`, `effort` as `5_claude_controls.png`,
-  and Settings › Look › Theme as `6_themes.png`. [`store-art.py`](../play/store-art.py) then puts each in
-  a phone under its headline, in `fastlane/metadata/android/en-US/images/phoneScreenshots`.
+  and Settings › Look › Theme as `6_themes.png`, wearing Cretaceous. [`store-art.py`](../play/store-art.py)
+  then puts each in a phone under its headline, in `fastlane/metadata/android/en-US/images/phoneScreenshots`.
+- **The feature graphic's** board is calmer: `docs/demo/still.sh`, at 1080×1920 too, starts an agent in
+  each state, standing still with nothing to answer, and saves `docs/play/shots/feature_board.png`.
 
 ## For Google Play
 

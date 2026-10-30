@@ -136,7 +136,7 @@ class AppModel(
     /** Claude's prompts read and answered without opening their panes, as from a notification. */
     val prompts = PanePrompts()
 
-    /** Rex's themes, for Settings to offer. */
+    /** The app's themes, for Settings to offer. */
     val themes = Themes(context)
 
     /** The app's own updates, from its releases on GitHub. Off in builds that can't install them. */
@@ -169,6 +169,20 @@ class AppModel(
         }
         // Light has no look of the app's own to fall back on.
         return if (isDark) themes.byId(dark) else themes.byId(light) ?: themes.byId(Themes.DEFAULT_LIGHT)
+    }
+
+    /**
+     * A theme chosen that the app no longer has, as Rex's, which it had until 0.4.3, gives way to the app's
+     * own look or its default light theme, which it wears in their place: Settings then names and ticks those.
+     */
+    private fun forgetLostThemes() {
+        if (settings.themeDark.value != Themes.DEFAULT && themes.byId(settings.themeDark.value) == null) {
+            settings.themeDark.value = Themes.DEFAULT
+        }
+        if (settings.themeLight.value != Themes.DEFAULT_LIGHT && themes.byId(settings.themeLight.value) == null) {
+            settings.themeLight.value = Themes.DEFAULT_LIGHT
+        }
+        prefs.edit().putBoolean(Settings.LOST_THEMES_FORGOTTEN, true).apply()
     }
 
     /** From the activity, which handles its own configuration changes, such as the phone going dark. */
@@ -216,6 +230,8 @@ class AppModel(
             combine(theme, settings.terminalColorsFromTheme.flow) { t, terminalsToo -> t to terminalsToo }
                 .collect { (t, terminalsToo) -> wear(t, terminalsToo) }
         }
+        // Off the main thread, as finding out may read every theme.
+        if (!prefs.getBoolean(Settings.LOST_THEMES_FORGOTTEN, false)) scope.launch { forgetLostThemes() }
         scope.launch(Dispatchers.Main) {
             // Turned on or off from here on: coming to the foreground starts it if it is on.
             settings.watchInBackground.flow.drop(1).collect { on ->

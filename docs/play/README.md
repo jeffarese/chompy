@@ -80,8 +80,10 @@ with `fastlane supply`:
 | What's new (500) | `changelogs/<versionCode>.txt`, or `default.txt` |
 | Video | A YouTube link to the promo video ([how it's made](../demo/README.md#for-google-play)) |
 
-[`store-art.py`](store-art.py) makes the icon and the feature graphic from the art in `art/`, and the
-screenshots from the raw captures in [`shots/`](shots), each in a phone under a headline:
+[`store-art.py`](store-art.py) makes the icon from the art in `art/`; the feature graphic from it and the
+board in `shots/feature_board.png`, again at 1280×640 as GitHub's social preview (`docs/media/social-preview.png`,
+uploaded by hand in the repository's Settings › Social preview); and the screenshots from the raw captures in
+[`shots/`](shots), each in a phone under a headline:
 
 | Screenshot | Headline |
 |---|---|
@@ -90,7 +92,7 @@ screenshots from the raw captures in [`shots/`](shots), each in a phone under a 
 | `3_permission` | Approve without the laptop |
 | `4_note` | Read what Claude flags |
 | `5_claude_controls` | Claude's controls at hand |
-| `6_themes` | All 41 of Rex's themes |
+| `6_themes` | Themes for day and night |
 
 The words are in `SHOTS` at the top of the script. Play takes a headline only if it covers no more than
 a fifth of the image, and no ranking, price or call to action ("#1", "Best", "Download now"). After a new
