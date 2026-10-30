@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -80,6 +81,8 @@ class FyiOverlayTest {
 
         // The explanation comes up with new buttons, which wait a moment too.
         info.value = ScreenInfo(claudeInput = "", fyi = open)
+        // With the clock held, nothing else tells Compose of the change: the working dots no longer ask for every frame.
+        Snapshot.sendApplyNotifications()
         rule.mainClock.advanceTimeBy(100)
         rule.onNodeWithText("Why the phone refuses it").assertIsDisplayed()
         rule.onNodeWithText("Understood").performClick()
