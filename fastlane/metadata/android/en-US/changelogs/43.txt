@@ -1,0 +1,1 @@
+Claude Code's "Heads up" notes keep their buttons when Claude's "/clear to save tokens" hint sits under them or a background shell's row over them. Before, the card lost its buttons, Understood among them, or didn't show at all.

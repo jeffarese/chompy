@@ -35,8 +35,9 @@ import java.util.concurrent.TimeUnit
  * entry in "sessions" with a new session id, a tag and an "offer" view holding a line and an
  * explanation long enough to overflow 40 rows at 50 columns. Set REX_LIVE_HOST, and
  * REX_LIVE_FYI_SESSION to that id (REX_LIVE_FYI_CLASSIC_SESSION to a second one for the classic
- * renderer). Claude starts with that id in a new temporary directory, and the session is destroyed
- * at the end; the store entries are the caller's to remove.
+ * renderer). For [understoodUnderAShell], set REX_LIVE_FYI_SHELL_SESSION and
+ * REX_LIVE_FYI_SHELL_CLASSIC_SESSION to two more. Claude starts with each id in a new temporary
+ * directory, and the session is destroyed at the end; the store entries are the caller's to remove.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -46,10 +47,54 @@ class LiveFyiTest {
 
     @Test
     fun claudeCodeNotes() {
-        val address = System.getenv("REX_LIVE_HOST")
         val fullscreenSession = System.getenv("REX_LIVE_FYI_SESSION")
-        assumeTrue("set REX_LIVE_HOST and REX_LIVE_FYI_SESSION to run", !address.isNullOrBlank() && !fullscreenSession.isNullOrBlank())
+        assumeTrue("set REX_LIVE_HOST and REX_LIVE_FYI_SESSION to run", !fullscreenSession.isNullOrBlank())
         val classicSession = System.getenv("REX_LIVE_FYI_CLASSIC_SESSION")
+        onRex { t, resize ->
+            t.typeText("cd \"$(mktemp -d)\" && command claude --session-id $fullscreenSession $CLAUDE $FULLSCREEN\r")
+            walkThrough(t, fullscreen = true)
+            exitClaude(t)
+
+            if (!classicSession.isNullOrBlank()) {
+                resize(50, 24)
+                pump(500)
+                t.typeText("clear; $CLASSIC command claude --session-id $classicSession $CLAUDE\r")
+                walkThrough(t, fullscreen = false)
+                exitClaude(t)
+            }
+        }
+    }
+
+    /**
+     * A note with a background shell's row over it, which a plugin pins in the same panel, and
+     * Claude's "new task? /clear to save … tokens" hint between it and the input box: open it, read
+     * it whole and press Understood. Needs a plugin that pins background shells over the note;
+     * Claude shows the hint at once here.
+     */
+    @Test
+    fun understoodUnderAShell() {
+        val fullscreenSession = System.getenv("REX_LIVE_FYI_SHELL_SESSION")
+        assumeTrue("set REX_LIVE_HOST and REX_LIVE_FYI_SHELL_SESSION to run", !fullscreenSession.isNullOrBlank())
+        val classicSession = System.getenv("REX_LIVE_FYI_SHELL_CLASSIC_SESSION")
+        onRex { t, resize ->
+            t.typeText("cd \"$(mktemp -d)\" && $HINT_AT_ONCE command claude --session-id $fullscreenSession $CLAUDE $FULLSCREEN\r")
+            understoodUnderAShell(t, fullscreen = true)
+            exitClaude(t)
+
+            if (!classicSession.isNullOrBlank()) {
+                resize(50, 24)
+                pump(500)
+                t.typeText("clear; $HINT_AT_ONCE $CLASSIC command claude --session-id $classicSession $CLAUDE\r")
+                understoodUnderAShell(t, fullscreen = false)
+                exitClaude(t)
+            }
+        }
+    }
+
+    /** A terminal in a new Rex session at 50x40 for [run], which may resize it; the session is destroyed after. */
+    private fun onRex(run: (RemoteTerminal, resize: (columns: Int, rows: Int) -> Unit) -> Unit) {
+        val address = System.getenv("REX_LIVE_HOST")
+        assumeTrue("set REX_LIVE_HOST to run", !address.isNullOrBlank())
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val host = HostConnection(HostConfig(label = "live", url = ControlConnection.normalizeHostUrl(address!!)), http, scope) {}
         val (sid, bid) = runBlocking {
@@ -69,24 +114,14 @@ class LiveFyiTest {
             t.start()
             waitFor("the first screen") { !t.syncing.value && screen().any { it.isNotBlank() } }
             pump(800)
-
-            t.typeText("cd \"$(mktemp -d)\" && command claude --session-id $fullscreenSession --model claude-haiku-5-5\r")
-            walkThrough(t, fullscreen = true)
-            exitClaude(t)
-
-            if (!classicSession.isNullOrBlank()) {
-                resize(host, sid, bid, 50, 24)
-                pump(500)
-                t.typeText("clear; CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 command claude --session-id $classicSession --model claude-haiku-5-5\r")
-                walkThrough(t, fullscreen = false)
-                exitClaude(t)
-            }
+            run(t) { columns, rows -> resize(host, sid, bid, columns, rows) }
         } catch (e: Throwable) {
             println("screen at failure:\n${runCatching { text() }.getOrNull()}")
             throw e
         } finally {
             terminal?.let { t ->
-                if (info().claudeMode != null) exitClaude(t)
+                // An exit that fails here mustn't hide the failure that led here, nor skip the destroy below.
+                if (info().claudeMode != null) runCatching { exitClaude(t) }
                 t.close()
             }
             runBlocking {
@@ -141,10 +176,55 @@ class LiveFyiTest {
         assertEquals("", info().claudeInput)
     }
 
+    /**
+     * Claude runs a shell in the background, which a plugin pins over the note, and goes idle, so
+     * its hint comes under the note; then the note is opened, read whole, and Understood pressed.
+     */
+    private fun understoodUnderAShell(t: RemoteTerminal, fullscreen: Boolean) {
+        val mode = if (fullscreen) "fullscreen" else "classic"
+        waitFor("the note ($mode)", 60_000) { info().fyi?.actions?.isNotEmpty() == true && info().claudeInput == "" }
+        assertEquals(fullscreen, info().fullscreen)
+        // Typed at once, the line reads as a paste: Enter goes on its own, or Claude takes it for a newline.
+        t.typeText("Use the Bash tool with run_in_background set to true to run: sleep 300. Then reply with just ok.")
+        pump(500)
+        t.sendKey(RemoteKey.ENTER)
+        waitFor("the shell's row over the note ($mode)", 90_000) { screen().any { it.endsWith(" [-]") && it.trim() != "[-]" } }
+        waitFor("the hint ($mode)", 60_000) { screen().any { "new task?" in it } && !info().interruptible }
+        waitFor("the note under them ($mode)") { info().fyi?.actions?.isNotEmpty() == true && info().claudeInput == "" }
+        val offer = info().fyi!!
+        println("$mode offer under a shell: ${offer.tag} · ${offer.headline} ${offer.actions}")
+        assertEquals(listOf("Learn more", "Knew this already", "Dismiss"), offer.actions.map { it.label })
+
+        t.pressFyi(offer, offer.actions.first { it.label == "Learn more" })
+        waitFor("the explanation ($mode)", 30_000) { info().fyi?.body?.isNotEmpty() == true }
+        t.readFyi()
+        waitFor("the whole explanation ($mode)", 30_000) { info().fyi?.complete == true }
+        val whole = info().fyi!!
+        println("$mode explanation under a shell: ${whole.body.map { "${it.kind} ${it.text.take(40)}" }} ${whole.actions}")
+        assertTrue(whole.body.any { it.kind == FyiLine.Kind.TITLE })
+        assertTrue(whole.body.none { it.kind == FyiLine.Kind.MISSING })
+        assertTrue(whole.body.none { "new task?" in it.text })
+
+        t.pressFyi(whole, whole.actions.first { it.label == "Understood" })
+        waitFor("the note to go ($mode)", 10_000) { info().fyi == null }
+        // The digit went to the button, not into the box.
+        pump(1_000)
+        assertEquals("", info().claudeInput)
+        assertTrue(screen().any { it.endsWith(" [-]") && it.trim() != "[-]" })
+    }
+
     private fun exitClaude(t: RemoteTerminal) {
         t.paste("/exit")
         t.sendKey(RemoteKey.ENTER)
-        waitFor("Claude to exit", 15_000) { info().claudeMode == null && info().claudeInput == null }
+        // With a shell still running in the background, Claude asks first; its first answer stops the shell.
+        var asked = false
+        waitFor("Claude to exit", 15_000) {
+            if (!asked && info().prompt?.options?.firstOrNull()?.label == "Exit and stop tasks") {
+                asked = true
+                t.sendKey(RemoteKey.ENTER)
+            }
+            info().claudeMode == null && info().claudeInput == null
+        }
         pump(500)
     }
 
@@ -176,5 +256,14 @@ class LiveFyiTest {
             if (System.currentTimeMillis() > until) throw AssertionError("timed out waiting for $what; last read: ${info()}")
             pump(50)
         }
+    }
+
+    private companion object {
+        const val CLAUDE = "--model claude-haiku-5-5"
+        /** Fullscreen, whatever renderer the machine's settings choose. */
+        const val FULLSCREEN = "--settings '{\"tui\":\"fullscreen\"}'"
+        const val CLASSIC = "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1"
+        /** Claude's "new task? /clear to save … tokens" hint, after a few idle seconds rather than 75 minutes and 100k tokens. */
+        const val HINT_AT_ONCE = "CLAUDE_CODE_IDLE_TOKEN_THRESHOLD=1 CLAUDE_CODE_IDLE_THRESHOLD_MINUTES=0.1"
     }
 }

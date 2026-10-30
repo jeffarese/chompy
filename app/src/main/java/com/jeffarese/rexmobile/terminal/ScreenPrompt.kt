@@ -34,7 +34,10 @@ data class ScreenInfo(
  * earlier reads saw ([mergedWith]) as well as the ones on screen now ([shown]).
  */
 data class FyiNote(
-    /** The panel's rows top down, the blank one at the top first, as far as they have been read; null for one not seen. */
+    /**
+     * The panel's rows top down, as far as they have been read; null for one not seen. Those over
+     * the ✦ are blank: the note's blank first row, and any rows another plugin draws over the note.
+     */
     val rows: List<FyiRow?>,
     /** The rows on screen now, as indices in [rows]. */
     val shown: IntRange,
@@ -81,7 +84,7 @@ data class FyiRow(
     val text: String,
     /** The buttons on the row. */
     val actions: List<FyiAction> = emptyList(),
-    /** True if the row is bold, as a title in an explanation is; null when the style isn't known. */
+    /** True if the row is bold throughout, as a title in an explanation is; null when the style isn't known. */
     val bold: Boolean? = null,
     /** True if the row is all in one colour of its own, as a sketch in an explanation is; null when the style isn't known. */
     val sketch: Boolean? = null,
@@ -240,7 +243,7 @@ object ScreenReader {
     private fun fyiAbove(emulator: TerminalEmulator, visible: List<String>): FyiNote? {
         val rows = visible.map(::Row)
         val box = inputBox(rows, rows.indexOfLast { !it.blank }) ?: return null
-        if (panelBottom(rows, box.first)?.second == null) return null
+        if (panelBottom(rows, box.first, emulator.mColumns)?.second == null) return null
         val screen = emulator.screen
         val extra = minOf(screen.activeTranscriptRows, MAX_NOTE_ROWS)
         if (extra == 0) return null
@@ -754,11 +757,13 @@ object ScreenReader {
 
     /**
      * The panel Claude Code's "You should know" plugin draws just above the input box, past the
-     * effort badge that may sit between them. Its first row is blank but for the "[-]" that folds
-     * it, at the right end; then "✦ " and the note, the explanation once open, and the buttons, each
-     * a digit in Claude's accent colour, ": " and a label, two spaces or more apart. When it is
-     * taller than its room it shows a window of its rows with "↑ 3 more · ↓ 12 more" under it, and
-     * the "[-]" over the window's first row.
+     * effort badge that may sit between them. The note's first row is blank; then "✦ " and the
+     * note, the explanation once open, and the buttons, each a digit in Claude's accent colour,
+     * ": " and a label, two spaces or more apart. The "[-]" that folds the panel sits at the right
+     * end of its first row: the note's blank one, unless another plugin draws rows of its own over
+     * the note, as one that pins background shells does. When the panel is taller than its room
+     * it shows a window of its rows with "↑ 3 more · ↓ 12 more" under it, and the "[-]" over the
+     * window's first row.
      *
      * @param box the row of the rule over Claude's input box.
      * @param trustFrom the first of [lines] that shows the panel as it is now, unless it is scrolled to its top.
@@ -766,7 +771,7 @@ object ScreenReader {
     private fun fyiOf(
         lines: List<String>, rows: List<Row>, box: Int, columns: Int, trustFrom: Int = 0, style: ((row: Int, index: Int) -> Long)?,
     ): FyiNote? {
-        val (last, cue) = panelBottom(rows, box) ?: return null
+        val (last, cue) = panelBottom(rows, box, columns) ?: return null
         val bottom = if (cue != null) last - 1 else last
         val top = (bottom downTo maxOf(0, bottom - MAX_NOTE_ROWS)).firstOrNull { isHandle(lines[it], columns) } ?: return null
         val above = cue?.groupValues?.get(1)?.toIntOrNull() ?: 0
@@ -775,21 +780,29 @@ object ScreenReader {
             val line = lines[r].replace('\u00a0', ' ').let { if (r == top) it.trimEnd().dropLast(HANDLE.length) else it }.trimEnd()
             fyiRow(line, r, style)
         }
-        // At the top, the panel's first row is blank and its second has the ✦.
-        if (above == 0 && (window[0].text.isNotEmpty() || window.getOrNull(1)?.text?.startsWith("✦ ") != true)) return null
+        val trusted = { k: Int -> above == 0 || top + k >= trustFrom }
+        val head = window.indices.firstOrNull { k -> trusted(k) && window[k].text.startsWith("✦ ") && (k == 0 || window[k - 1].text.isEmpty()) }
+        // At the panel's top, the note's blank row and its ✦ are on screen.
+        if (above == 0 && (head == null || head == 0)) return null
         val all = MutableList<FyiRow?>(above + window.size + below) { null }
-        window.forEachIndexed { k, row -> if (above == 0 || top + k >= trustFrom) all[above + k] = row }
+        window.forEachIndexed { k, row -> if (trusted(k)) all[above + k] = row }
+        // Over the ✦, only the note's blank row and another plugin's rows: blank, so rows that
+        // change while a shell runs don't make the note look like a new one.
+        if (head != null) for (i in 0 until above + head) all[i] = FyiRow("")
         return FyiNote(all, above until above + window.size, top, maxOf(1, columns - NOTE_MARGIN))
     }
 
     /**
      * The last row of the panel's window above Claude's input [box], past the effort badge, blank
      * rows and Claude's own right-aligned lines there (a hint such as "new task? /clear to save
-     * 178.2k tokens", or an update notice), and the "↓ 12 more" cue if that row is one.
+     * 178.2k tokens", or an update notice), and the "↓ 12 more" cue if that row is one. Those
+     * lines end a column or two short of the screen's edge, past any of the panel's rows: at phone
+     * width, they may start further left than they end short of it.
      */
-    private fun panelBottom(rows: List<Row>, box: Int): Pair<Int, MatchResult?>? {
+    private fun panelBottom(rows: List<Row>, box: Int, columns: Int): Pair<Int, MatchResult?>? {
+        val notPanel = { r: Row -> r.blank || r.rightAligned || r.text.length > columns - NOTE_MARGIN || EFFORT_BADGE.containsMatchIn(r.text) }
         var bottom = box - 1
-        while (bottom >= 0 && rows[bottom].let { it.blank || it.rightAligned || EFFORT_BADGE.containsMatchIn(it.text) }) bottom--
+        while (bottom >= 0 && notPanel(rows[bottom])) bottom--
         if (bottom < 0) return null
         val cue = rows[bottom].text.takeIf { it.isNotEmpty() && !it.startsWith(' ') }?.let(CUE::matchEntire)
             ?.takeIf { it.groupValues[1].isNotEmpty() || it.groupValues[2].isNotEmpty() }
@@ -808,8 +821,10 @@ object ScreenReader {
         val first = text.indexOfFirst { it != ' ' }
         if (style == null) return FyiRow(text, actions)
         if (first < 0) return FyiRow(text, actions, bold = false, sketch = false)
-        val bold = TextStyle.decodeEffect(style(row, first)) and TextStyle.CHARACTER_ATTRIBUTE_BOLD != 0
-        val colours = (first until text.length).filter { text[it] != ' ' }.map { TextStyle.decodeForeColor(style(row, it)) }.toSet()
+        val ink = (first until text.length).filter { text[it] != ' ' }
+        // A paragraph's text may have words in bold; a title is bold throughout.
+        val bold = ink.all { TextStyle.decodeEffect(style(row, it)) and TextStyle.CHARACTER_ATTRIBUTE_BOLD != 0 }
+        val colours = ink.map { TextStyle.decodeForeColor(style(row, it)) }.toSet()
         val sketch = colours.size == 1 && colours.first() != TextStyle.COLOR_INDEX_FOREGROUND && !text.trimStart().startsWith("✦")
         return FyiRow(text, actions, bold, sketch)
     }
@@ -911,7 +926,9 @@ object ScreenReader {
                     close()
                     out += FyiLine(FyiLine.Kind.SKETCH, r.text.removePrefix("  ").trimEnd())
                 }
-                r.bold ?: looksLikeTitle(rows, i, width) -> {
+                // A title starts a card, after a blank row, and may wrap.
+                r.bold?.let { it && (prev?.text?.isBlank() != false || out.lastOrNull()?.kind == FyiLine.Kind.TITLE) }
+                    ?: looksLikeTitle(rows, i, width) -> {
                     close()
                     out += FyiLine(FyiLine.Kind.TITLE, r.text.trim())
                 }

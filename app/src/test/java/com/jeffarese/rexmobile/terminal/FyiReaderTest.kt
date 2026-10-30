@@ -15,7 +15,9 @@ import org.junit.Test
 /**
  * Claude Code 2.1.311's "You should know" panel, captured through a live Rex server at 50 columns
  * (see src/test/resources/screens/claude-fyi-*): a note staged in the plugin's store, opened,
- * scrolled in fullscreen and dismissed. The .vt captures keep the colours the .txt ones lose.
+ * scrolled in fullscreen and dismissed. The .vt captures keep the colours the .txt ones lose. The
+ * claude-fyi-shell* ones are 2.1.314's, with a background shell's row that a plugin pins over the
+ * note, and Claude's hint under it.
  */
 class FyiReaderTest {
     private val note = "Release builds fall back to the debug key when keystore.properties is missing, " +
@@ -41,6 +43,30 @@ class FyiReaderTest {
             TEXT,
             "Keep keystore.properties and rex-mobile-release.jks on every machine that builds releases, and look for " +
                 "signingConfig release in the build log.",
+        ),
+    )
+
+    /** The note staged for 2.1.314's captures, as it lays out at 50 columns. */
+    private val longExplanation = listOf(
+        FyiLine(TITLE, "Why the phone refuses it"),
+        FyiLine(
+            TEXT,
+            "Android only installs an update signed with the same key as the app already on the phone. A debug-signed APK " +
+                "looks like a different app, so the install fails with a signature conflict instead of updating.",
+        ),
+        FyiLine(SKETCH, "keystore.properties ── yes ──▶ release key"),
+        FyiLine(SKETCH, "        │"),
+        FyiLine(SKETCH, "        no"),
+        FyiLine(SKETCH, "        ▼"),
+        FyiLine(SKETCH, "   debug key ──▶ \"App not installed\""),
+        FyiLine(TEXT, "Check that keystore.properties sits next to settings.gradle.kts before you build."),
+        FyiLine(GAP),
+        FyiLine(TITLE, "What to do"),
+        // Its last row starts with words in bold, and is still the paragraph's.
+        FyiLine(
+            TEXT,
+            "Keep keystore.properties and the release keystore on every machine that builds releases, and look for " +
+                "signingConfig release in the build log before you upload.",
         ),
     )
 
@@ -229,6 +255,65 @@ class FyiReaderTest {
         assertTrue(update.body.isEmpty())
     }
 
+    /**
+     * At phone width the hint over the input box, "new task? /clear to save 46.3k tokens", starts
+     * further left than it ends short of the edge, so it doesn't look right-aligned. It still reaches
+     * past any of the panel's rows, which stop five columns short.
+     */
+    @Test
+    fun theHintUnderThePanelAtPhoneWidth() {
+        val n = vt("claude-fyi-hint-phone").fyi!!
+        assertEquals(note, n.headline)
+        assertEquals(offerActions, n.actions)
+        assertTrue(n.body.isEmpty())
+        assertTrue(n.actions.all(n::shows))
+    }
+
+    /** A plugin draws a background shell's row in the panel, over the note: the "[-]" goes on that row. */
+    @Test
+    fun aShellOverTheNote() {
+        val n = vt("claude-fyi-shell").fyi!!
+        assertEquals("Heads up", n.tag)
+        assertEquals(note, n.headline)
+        assertEquals(offerActions, n.actions)
+        assertTrue(n.body.isEmpty())
+        assertTrue(n.complete)
+        assertTrue(n.actions.all(n::shows))
+        assertEquals(FyiRow(""), n.rows.first())
+    }
+
+    @Test
+    fun aScrolledPanelUnderAShell() {
+        val top = vt("claude-fyi-shell-top").fyi!!
+        assertEquals(29, top.rows.size)
+        assertEquals(0..12, top.shown)
+        assertEquals(note, top.headline)
+        assertEquals(longExplanation.take(2) + FyiLine(MISSING), top.body)
+        assertTrue(top.actions.isEmpty())
+
+        val end = vt("claude-fyi-shell-end").fyi!!
+        assertEquals(16..28, end.shown)
+        assertEquals(openActions, end.actions)
+        assertTrue(end.actions.all(end::shows))
+        assertTrue(end.sameNote(top))
+        val both = end.mergedWith(top)
+        assertEquals(note, both.headline)
+        assertEquals(openActions, both.actions)
+        assertEquals(1, both.body.count { it.kind == MISSING })
+
+        // The shell's time ticks on: the note is still the same one.
+        assertEquals(top, vt("claude-fyi-shell-top") { it.replace("1m 50s", "1m 51s") }.fyi)
+    }
+
+    @Test
+    fun aWholeNoteUnderAShellInTheClassicRenderer() {
+        val n = vt("claude-fyi-shell-classic").fyi!!
+        assertEquals(note, n.headline)
+        assertEquals(longExplanation, n.body)
+        assertEquals(openActions, n.actions)
+        assertTrue(n.complete)
+    }
+
     /** A captured screen: a "# cursor_row=N ..." line, then the screen's rows. */
     private fun fixture(name: String): ScreenInfo = screen(name) { it }
 
@@ -242,10 +327,10 @@ class FyiReaderTest {
         return ScreenReader.read(lines, cursorRow)
     }
 
-    /** A screen captured as escape sequences, replayed into a terminal 50 columns wide. */
-    private fun vt(name: String, rows: Int = 40): ScreenInfo {
+    /** A screen captured as escape sequences, changed by [edit] and replayed into a terminal 50 columns wide. */
+    private fun vt(name: String, rows: Int = 40, edit: (String) -> String = { it }): ScreenInfo {
         val t = TestSession(columns = 50, rows = rows)
-        t.print(javaClass.classLoader!!.getResource("screens/$name.vt")!!.readText())
+        t.print(edit(javaClass.classLoader!!.getResource("screens/$name.vt")!!.readText()))
         return ScreenReader.read(t.emulator)
     }
 }
