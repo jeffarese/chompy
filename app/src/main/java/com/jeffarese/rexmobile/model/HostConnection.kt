@@ -503,10 +503,22 @@ class HostConnection(
         }
     }
 
+    /**
+     * Attach to a session created after the connection began. Its blocks' events, agents' statuses
+     * among them, only come to a connection attached to it, so a failed attach is tried twice more
+     * before settling for the session's view.
+     */
     private suspend fun attach(c: ControlConnection, sid: String) {
-        val view: SessionView = runCatching {
-            c.callAs<AttachResult>("session.attach", buildJsonObject { put("session_id", sid) }).view
-        }.getOrNull() ?: runCatching {
+        var attached: SessionView? = null
+        for (wait in longArrayOf(0, 1_000, 3_000)) {
+            delay(wait)
+            if (conn !== c) return
+            attached = runCatching {
+                c.callAs<AttachResult>("session.attach", buildJsonObject { put("session_id", sid) }).view
+            }.getOrNull()
+            if (attached != null) break
+        }
+        val view: SessionView = attached ?: runCatching {
             c.callAs<SessionView>("session.view", buildJsonObject { put("session_id", sid) })
         }.getOrNull() ?: return
         _state.update { st -> st.copy(views = st.views + (sid to view)) }
