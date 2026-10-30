@@ -97,6 +97,7 @@ import com.jeffarese.rexmobile.model.RexTheme
 import com.jeffarese.rexmobile.model.Themes
 import com.jeffarese.rexmobile.model.AppModel
 import com.jeffarese.rexmobile.model.KeepScreenOn
+import com.jeffarese.rexmobile.model.Notifier
 import com.jeffarese.rexmobile.model.Settings
 import com.jeffarese.rexmobile.model.UpdateState
 import com.jeffarese.rexmobile.model.Updater
@@ -111,6 +112,13 @@ private val ALERT_KINDS = listOf(
     Alert.Kind.ERROR to "Failed",
     Alert.Kind.BELL to "Bell",
     Alert.Kind.NOTIFICATION to "Notification",
+)
+
+/** The notification channels, whose sound and pop-up Android's settings set for each. */
+private val ALERT_CHANNELS = listOf(
+    Notifier.CHANNEL_NEEDS_YOU to "Needs you",
+    Notifier.CHANNEL_RESULTS to "Finished and failed",
+    Notifier.CHANNEL_PROGRAMS to "Program notifications",
 )
 
 private enum class Page { LICENSES, CRASH, RETURNS, KEYS, STRIP, THEMES }
@@ -297,7 +305,10 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onHosts: () -> Unit, onS
             item { SectionTitle("Alerts") }
             item {
                 Card {
-                    SettingRow("Banners", "Shown at the top while the app is open. Tabs get their dot either way.")
+                    SettingRow(
+                        "Banners and notifications",
+                        "A banner at the top while the app is open, a notification when away. Tabs get their dot either way.",
+                    )
                     FlowRow(
                         Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -320,6 +331,29 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onHosts: () -> Unit, onS
                         settings.watchInBackground.value = on
                         if (on && Build.VERSION.SDK_INT >= 33 && !model.notifier.enabled) {
                             askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
+                    if (watching && notificationsOn) {
+                        Divider()
+                        SettingRow("Sound and pop-up", "Set for each kind in Android's settings")
+                        FlowRow(
+                            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            ALERT_CHANNELS.forEach { (channel, label) ->
+                                // Turned off there, a kind sends nothing even though it is on here.
+                                val on = remember(resumed) { model.notifier.channelOn(channel) }
+                                LinkChip(if (on) label else "$label: off") {
+                                    runCatching {
+                                        context.startActivity(
+                                            Intent(SystemSettings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                                                .putExtra(SystemSettings.EXTRA_APP_PACKAGE, context.packageName)
+                                                .putExtra(SystemSettings.EXTRA_CHANNEL_ID, channel),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                     if (watching && !notificationsOn) {
@@ -580,6 +614,22 @@ private fun Chip(label: String, on: Boolean, mono: Boolean = false, onToggle: ()
             label, color = if (on) Rex.text else Rex.textFaint, fontSize = 13.sp,
             fontFamily = if (mono) Rex.mono else null,
         )
+    }
+}
+
+/** A way into another screen, shaped like [Chip], with an arrow to say so. */
+@Composable
+private fun LinkChip(label: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(9.dp)
+    Row(
+        Modifier.height(36.dp).clip(shape)
+            .border(0.5.dp, Rex.divider, shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(start = 11.dp, end = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Rex.text, fontSize = 13.sp)
+        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = Rex.textDim, modifier = Modifier.size(18.dp))
     }
 }
 
