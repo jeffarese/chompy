@@ -9,9 +9,14 @@ import android.content.Intent
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.os.bundleOf
+import com.jeffarese.rexmobile.AnswerReceiver
 import com.jeffarese.rexmobile.MainActivity
 import com.jeffarese.rexmobile.R
 import com.jeffarese.rexmobile.WatchService
+import com.jeffarese.rexmobile.terminal.PromptOption
+import com.jeffarese.rexmobile.terminal.QuestionTab
+import com.jeffarese.rexmobile.terminal.ScreenPrompt
 
 /**
  * The phone's own notifications: one per pane for what an agent or program did while the app was
@@ -67,8 +72,12 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
         context.getSystemService(NotificationManager::class.java)?.getNotificationChannel(channel)
             ?.let { it.importance != NotificationManager.IMPORTANCE_NONE } != false
 
-    /** Tell the user about [alert] on [hostLabel]. A newer one for the same pane replaces it. */
-    fun post(alert: Alert, hostLabel: String?) {
+    /**
+     * Tell the user about [alert] on [hostLabel]. A newer one for the same pane replaces it. With
+     * [prompt], the Claude prompt the pane shows, it says what Claude asks, and offers the answers
+     * as buttons that [AnswerReceiver] presses.
+     */
+    fun post(alert: Alert, hostLabel: String?, prompt: PanePrompt? = null) {
         val what = when (alert.kind) {
             Alert.Kind.BLOCKED -> "Needs you"
             Alert.Kind.DONE -> "Finished"
@@ -76,20 +85,69 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
             Alert.Kind.BELL -> "Bell"
             Alert.Kind.NOTIFICATION -> "Notification"
         }
-        val notification = NotificationCompat.Builder(context, channelOf(alert.kind))
+        val body = alert.body?.takeIf { it.isNotBlank() }
+        val asks = prompt?.prompt
+        val builder = NotificationCompat.Builder(context, channelOf(alert.kind))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(alert.title)
-            .setContentText(alert.body?.takeIf { it.isNotBlank() } ?: what)
+            .setContentText(asks?.let(::questionOf) ?: body ?: what)
             .setSubText(listOfNotNull(what, hostLabel).joinToString(" · "))
-            .setStyle(alert.body?.takeIf { it.isNotBlank() }?.let { NotificationCompat.BigTextStyle().bigText(it) })
+            .setStyle((asks?.let { (it.context + questionOf(it)).joinToString("\n") } ?: body)?.let { NotificationCompat.BigTextStyle().bigText(it) })
             .setCategory(if (alert.kind == Alert.Kind.BLOCKED) NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_STATUS)
             .setPriority(if (alert.kind == Alert.Kind.BLOCKED) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
-            .setContentIntent(openPane(alert))
+            .setContentIntent(openPane(alert.hostId, alert.sessionId, alert.blockId))
             // An agent flipping between states updates its notification without buzzing each time.
             .setSilent(!pacer.alerts(alert.blockId))
+        if (prompt != null) {
+            offered(prompt).forEach { builder.addAction(answerAction(prompt, it, alert.title, hostLabel)) }
+            builder.addExtras(bundleOf(EXTRA_SEEN_AT to prompt.seenAt))
+        }
+        runCatching { manager.notify(alert.blockId, ALERT_ID, builder.build()) }
+    }
+
+    /** Say [tap]'s answer is on its way, in place of the buttons, so a second tap can't send another. */
+    fun answering(tap: AnswerTap) = update(tap, "Answering: ${tap.option.label}…")
+
+    /** Say how [tap]'s answer went. One given leaves after a moment; otherwise a tap opens the pane to answer there. */
+    fun answered(tap: AnswerTap, result: PanePrompts.Answer) {
+        val host = tap.hostLabel ?: "its host"
+        when (result) {
+            PanePrompts.Answer.ANSWERED -> {
+                // Claude asking again soon after is news, not an agent flipping between states.
+                pacer.forget(tap.prompt.blockId)
+                update(tap, "Answered: ${tap.option.label}", timeoutMs = ANSWERED_SHOWN_MS)
+            }
+            PanePrompts.Answer.UNCONFIRMED -> update(tap, "Sent ${tap.option.label}, but Claude didn't seem to take it. Tap to check.")
+            PanePrompts.Answer.CHANGED -> update(tap, "Not answered: the screen has changed since. Tap to open it.")
+            PanePrompts.Answer.UNREACHABLE -> update(tap, "Not answered: couldn't reach $host. Tap to open it.")
+            // The answer under way says how it went.
+            PanePrompts.Answer.BUSY -> Unit
+        }
+    }
+
+    /**
+     * Show [text] in place of [tap]'s question, quietly and without buttons, while the pane's
+     * notification is still the one tapped: a newer alert for the pane has replaced it otherwise.
+     */
+    private fun update(tap: AnswerTap, text: String, timeoutMs: Long? = null) {
+        val p = tap.prompt
+        val showing = runCatching { manager.activeNotifications }.getOrDefault(emptyList())
+            .any { it.tag == p.blockId && it.id == ALERT_ID && it.notification.extras.getLong(EXTRA_SEEN_AT) == p.seenAt }
+        if (!showing) return
+        val notification = NotificationCompat.Builder(context, CHANNEL_NEEDS_YOU)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(tap.title)
+            .setContentText(text)
+            .setSubText(listOfNotNull("Needs you", tap.hostLabel).joinToString(" · "))
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setSilent(true)
+            .setContentIntent(openPane(p.hostId, p.sessionId, p.blockId))
+            .addExtras(bundleOf(EXTRA_SEEN_AT to p.seenAt))
+            .apply { if (timeoutMs != null) setTimeoutAfter(timeoutMs) }
             .build()
-        runCatching { manager.notify(alert.blockId, ALERT_ID, notification) }
+        runCatching { manager.notify(p.blockId, ALERT_ID, notification) }
     }
 
     /** The pane's notification, once the user has seen the pane. */
@@ -144,18 +202,45 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
         runCatching { manager.notify(UPDATED_ID, notification) }
     }
 
-    private fun openPane(alert: Alert): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java)
-            .setAction(ACTION_OPEN_PANE)
-            .putExtra(EXTRA_HOST, alert.hostId)
-            .putExtra(EXTRA_SESSION, alert.sessionId)
-            .putExtra(EXTRA_BLOCK, alert.blockId)
-            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    private fun openPane(hostId: String, sessionId: String, blockId: String): PendingIntent =
         // One per pane, so each opens its own.
-        return PendingIntent.getActivity(
-            context, alert.blockId.hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        PendingIntent.getActivity(
+            context, blockId.hashCode(), paneIntent(context, hostId, sessionId, blockId),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+
+    /**
+     * A button that answers [prompt] with [option]. It carries the prompt as it was read, which the
+     * answer is checked against; typing into a terminal waits for the phone to be unlocked (before
+     * Android 12, [AnswerReceiver] opens the pane from the lock screen instead).
+     */
+    private fun answerAction(prompt: PanePrompt, option: PromptOption, title: String, hostLabel: String?): NotificationCompat.Action {
+        val index = prompt.prompt.options.indexOf(option)
+        val intent = Intent(context, AnswerReceiver::class.java)
+            .setAction(ACTION_ANSWER)
+            .putExtra(EXTRA_HOST, prompt.hostId)
+            .putExtra(EXTRA_SESSION, prompt.sessionId)
+            .putExtra(EXTRA_BLOCK, prompt.blockId)
+            .putExtra(EXTRA_QUESTION, prompt.prompt.question)
+            .putExtra(EXTRA_CONTEXT, prompt.prompt.context.toTypedArray())
+            .putExtra(EXTRA_OPTIONS, prompt.prompt.options.map { it.label }.toTypedArray())
+            .putExtra(EXTRA_TABS, prompt.prompt.tabs.map { it.label }.toTypedArray())
+            .putExtra(EXTRA_SEEN_AT, prompt.seenAt)
+            .putExtra(EXTRA_OPTION, index)
+            .putExtra(EXTRA_TITLE, title)
+            .putExtra(EXTRA_HOST_LABEL, hostLabel)
+        // One per pane and option, so each button carries its own.
+        val pending = PendingIntent.getBroadcast(
+            context, "${prompt.blockId}#$index".hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return NotificationCompat.Action.Builder(0, option.label, pending)
+            .setAuthenticationRequired(true)
+            .setShowsUserInterface(false)
+            .build()
     }
+
+    /** A tap on one of a notification's answers: [option] of [prompt], in the notification titled [title]. */
+    data class AnswerTap(val prompt: PanePrompt, val option: PromptOption, val title: String, val hostLabel: String?)
 
     companion object {
         const val CHANNEL_NEEDS_YOU = "needs_you"
@@ -169,18 +254,77 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
         const val WATCHING_ID = 2
         const val UPDATED_ID = 3
         const val ACTION_OPEN_PANE = "com.jeffarese.rexmobile.OPEN_PANE"
+        const val ACTION_ANSWER = "com.jeffarese.rexmobile.ANSWER"
         const val EXTRA_HOST = "host_id"
         const val EXTRA_SESSION = "session_id"
         const val EXTRA_BLOCK = "block_id"
+        private const val EXTRA_QUESTION = "question"
+        private const val EXTRA_CONTEXT = "context"
+        private const val EXTRA_OPTIONS = "options"
+        private const val EXTRA_TABS = "tabs"
+        private const val EXTRA_SEEN_AT = "seen_at"
+        private const val EXTRA_OPTION = "option"
+        private const val EXTRA_TITLE = "title"
+        private const val EXTRA_HOST_LABEL = "host_label"
 
         /** How long a pane's later posts stay quiet after it alerted. */
         const val QUIET_MS = 30_000L
+        /** How long "Answered" shows before the notification goes. */
+        private const val ANSWERED_SHOWN_MS = 4_000L
+
+        /** Opens the pane, as a tap on its notification does. */
+        fun paneIntent(context: Context, hostId: String, sessionId: String, blockId: String): Intent =
+            Intent(context, MainActivity::class.java)
+                .setAction(ACTION_OPEN_PANE)
+                .putExtra(EXTRA_HOST, hostId)
+                .putExtra(EXTRA_SESSION, sessionId)
+                .putExtra(EXTRA_BLOCK, blockId)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
 
         /** The channel for [kind]. A bell goes with programs' notifications, though it isn't posted today. */
         fun channelOf(kind: Alert.Kind): String = when (kind) {
             Alert.Kind.BLOCKED -> CHANNEL_NEEDS_YOU
             Alert.Kind.DONE, Alert.Kind.ERROR -> CHANNEL_RESULTS
             Alert.Kind.BELL, Alert.Kind.NOTIFICATION -> CHANNEL_PROGRAMS
+        }
+
+        /**
+         * The answers a notification offers as buttons, which Android shows three of: all of up to
+         * three. Of more, the first two, and for a permission its last, which is No; a tap on the
+         * notification opens the pane for the rest.
+         */
+        fun offered(prompt: PanePrompt): List<PromptOption> {
+            val answers = prompt.answers
+            return when {
+                answers.size <= 3 -> answers
+                prompt.permission -> answers.take(2) + answers.last()
+                else -> answers.take(2)
+            }
+        }
+
+        private fun questionOf(prompt: ScreenPrompt) =
+            prompt.question ?: if (prompt.claudeQuestion) "Claude has a question" else "Claude asks for permission"
+
+        /** The answer a tap on a notification's button asks for; null for an intent that isn't one. */
+        fun answerTap(intent: Intent): AnswerTap? {
+            if (intent.action != ACTION_ANSWER) return null
+            // As much of the prompt as it is checked against: its options' numbers and roles are read from the screen again.
+            val prompt = ScreenPrompt(
+                ScreenPrompt.Kind.MENU,
+                intent.getStringExtra(EXTRA_QUESTION),
+                intent.getStringArrayExtra(EXTRA_OPTIONS)?.map { PromptOption(null, it) } ?: return null,
+                context = intent.getStringArrayExtra(EXTRA_CONTEXT)?.toList().orEmpty(),
+                tabs = intent.getStringArrayExtra(EXTRA_TABS)?.map { QuestionTab(it, QuestionTab.State.OPEN) }.orEmpty(),
+            )
+            val pane = PanePrompt(
+                intent.getStringExtra(EXTRA_HOST) ?: return null,
+                intent.getStringExtra(EXTRA_SESSION) ?: return null,
+                intent.getStringExtra(EXTRA_BLOCK) ?: return null,
+                prompt,
+                intent.getLongExtra(EXTRA_SEEN_AT, 0),
+            )
+            val option = prompt.options.getOrNull(intent.getIntExtra(EXTRA_OPTION, -1)) ?: return null
+            return AnswerTap(pane, option, intent.getStringExtra(EXTRA_TITLE).orEmpty(), intent.getStringExtra(EXTRA_HOST_LABEL))
         }
     }
 }

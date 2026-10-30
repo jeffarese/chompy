@@ -10,6 +10,7 @@ import com.jeffarese.rexmobile.ui.Palette
 import com.jeffarese.rexmobile.ui.Rex
 import com.jeffarese.rexmobile.ui.Target
 import com.jeffarese.rexmobile.ui.paletteOf
+import com.jeffarese.rexmobile.ui.programOf
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -40,6 +41,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -126,6 +128,9 @@ class AppModel(
 
     /** The phone's notifications, for what happens while the app is away. */
     val notifier = Notifier(context)
+
+    /** Claude's prompts read and answered without opening their panes, as from a notification. */
+    val prompts = PanePrompts()
 
     /** Rex's themes, for Settings to offer. */
     val themes = Themes(context)
@@ -323,13 +328,36 @@ class AppModel(
         // A kind turned off in Settings still marks its tab unseen, but shows no banner and doesn't buzz.
         if (!settings.alertShown(alert.kind)) return
         // Away, a notification says it too; a bell isn't worth one.
-        if (!foreground && settings.watchInBackground.value && alert.kind != Alert.Kind.BELL) {
-            notifier.post(alert, connection(alert.hostId)?.config?.label)
-        }
+        if (!foreground && settings.watchInBackground.value && alert.kind != Alert.Kind.BELL) notifyAway(alert)
         // The pane on screen already shows its question or result: no banner or buzz for it.
         if (foreground && alert.blockId == visibleBlockId) return
         _alerts.tryEmit(alert)
         if (foreground && settings.alertVibrate.value && alert.kind in setOf(Alert.Kind.BLOCKED, Alert.Kind.NOTIFICATION)) buzz()
+    }
+
+    /** The screen read under way for each pane's Needs you notification. A newer alert for the pane takes its place. */
+    private val promptReads = HashMap<String, Job>()
+
+    /**
+     * Post [alert] as a notification. When Claude Code needs the user, its screen is read first, so
+     * a prompt that one press answers comes with its question and its answers as buttons.
+     */
+    private fun notifyAway(alert: Alert) {
+        val host = connection(alert.hostId)
+        val label = host?.config?.label
+        val claude = alert.kind == Alert.Kind.BLOCKED && programOf(host?.state?.value?.blocks?.get(alert.blockId)).startsWith("claude")
+        synchronized(promptReads) {
+            promptReads.remove(alert.blockId)?.cancel()
+            if (host == null || !claude) return notifier.post(alert, label)
+            promptReads[alert.blockId] = scope.launch {
+                val prompt = prompts.read(host, alert.sessionId, alert.blockId)
+                synchronized(promptReads) {
+                    if (promptReads[alert.blockId] !== coroutineContext.job) return@launch
+                    promptReads.remove(alert.blockId)
+                    if (!foreground) notifier.post(alert, label, prompt)
+                }
+            }
+        }
     }
 
     private fun buzz() {

@@ -52,5 +52,9 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- Answers Claude's prompts from a notification's buttons. -->
+        <receiver
+            android:name=".AnswerReceiver"
+            android:exported="false" />
     </application>
 </manifest>
