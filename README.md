@@ -25,11 +25,14 @@ before.
 | Group | What is in it | Leaves when |
 |---|---|---|
 | **Needs you** | Blocked agents, with what they want: permission, a question or a password. Also a bell or notification with no status. Longest waiting first. | It's answered |
-| **Failed** | Agents that report `error`, newest first | You've looked |
-| **Done** | Agents that report `done`, newest first | You've looked |
+| **Failed** | Agents that report `error`, newest first | You've looked, or cleared it |
+| **Done** | Agents that report `done`, newest first | You've looked, or cleared it |
 | **Working** | Running agents, with progress when they report it | They stop |
 
-A tap opens the terminal at that exact pane, where you answer the question and go back.
+A tap opens the terminal at that exact pane. When Claude Code asks for permission or asks a
+question, its card offers the answers its notification would, three at most, so one tap answers
+it from Home.
+Finished and failed cards clear with a swipe, or a whole group with Clear, with Undo either way.
 
 The board follows the [OSC 7501 program status protocol](https://www.superlogical.com/rex/docs/build/program-status)
 rather than guessing from the screen:
@@ -51,6 +54,10 @@ rather than guessing from the screen:
   moves with it.
 - **A host that drops out is shown as unreachable.** Its tabs fade with the reason, and its agents
   leave the board instead of claiming to still be working.
+- **Answers come from the screen, and are checked again.** OSC 7501 says what an agent waits for,
+  not what the choices are, so the answers come from Claude Code's prompt on its screen, read the
+  way the terminal reads it. Before pressing one, the app reads the screen again, and presses
+  nothing if the question, the command or the options have changed.
 
 <p align="center">
   <img src="docs/media/board.png" width="250" alt="The board: Claude asking to run the tests under Needs you, a failed test run with its subtasks, a finished Terraform plan and three agents working.">
@@ -118,7 +125,11 @@ Most of the work went into links that are slow or flaky, or that change mid-stre
 - **Input waits until the screen is current.** Keys and Send are held, dimmed, while a pane is
   loading or its host is away, so nothing is typed into a screen you can't see.
 - **A network change is noticed at once.** Moving from Wi-Fi to cellular checks every host
-  immediately instead of waiting for a ping to fail.
+  immediately instead of waiting for a ping to fail, and so does one while the app is away, with
+  Notify when away on.
+- **Away, an unreachable host is tried less often.** A laptop asleep overnight is tried at longer
+  and longer intervals, up to five minutes apart, and not at all without a network, so it doesn't
+  keep the phone's radio up. Coming back to the app, or a network coming back, tries at once.
 - **Coming back is instant.** Live streams survive a switch away and back. After a longer absence,
   terminals keep their last screen while the stream resumes (the server holds it for 60 s).
 - **Events missed while away are recovered.** After a reconnect, every pane's status, title,
@@ -133,11 +144,21 @@ Built with Jetpack Compose and Material 3. Where Android has its own way of doin
 app uses it:
 
 - Notifications for agents that need you, finish or fail, through a foreground service you opt into
-  (Settings › Alerts). Each one opens its pane, and the Settings page says when notification
-  permission or battery limits would stop them.
+  (the welcome offers it, and Settings › Alerts). Needs you pops up; finished and failed agents and
+  programs' own notifications have channels of their own, so Android's settings can quiet one and
+  not the others. A pane that alerts again within 30 s updates its notification without a sound.
+  Each one opens its pane, Claude's prompts can be answered from it once the phone is unlocked, and
+  the Settings page says when notification permission or battery limits would stop them.
 - Back closes search before it leaves the app, and a quick double tap opens one screen, not two.
-- Pairing scans the code from `rex server tailscale pair`, and checks Tailscale is up before trying
-  a tailnet address.
+  On Android 14 and later, a back swipe shows the screen underneath before you let go.
+- A long press on the app's icon offers the last four panes you opened.
+- Pairing scans the code from `rex server tailscale pair`, in the welcome or when adding a host,
+  and checks Tailscale is up before trying a tailnet address.
+- While an agent works, the screen stays on until ten minutes after your last touch, then sleeps
+  as the phone would (Settings › Terminal).
+- TalkBack reads each card's and tab's state, such as "Needs you, waiting for permission, 4
+  minutes ago". Dimmed text reads at 4.5:1 or more in every theme, and the key bar, tabs and
+  Claude's strip take 48 dp touches without growing.
 - Shell panes get a keyboard without autocapitalisation or autocorrect. A key bar with sticky Shift
   and arrows can be rearranged in Settings, as can Claude's strip.
 - The system's own copy confirmation on Android 13 and later, and landscape layouts that keep clear
@@ -160,7 +181,7 @@ The claims above come from tests that run against a real Rex server, not a mock:
 - **Live tests.** Each one opens throwaway sessions on a real server and destroys them after:
   slow links, compressed streams, early screens, pausing on return, prompts, scrolling under Claude
   and the full UI. They are skipped unless `REX_LIVE_HOST` is set.
-- **Unit tests.** About 350 tests in all, live ones included. Among them: the board's grouping and
+- **Unit tests.** About 480 tests in all, live ones included. Among them: the board's grouping and
   order, agents that finished while the app was away, and subtasks that must not alert.
 
 ```sh
@@ -172,8 +193,6 @@ scripts/bench-engine.sh                                                       # 
 ## What it doesn't do yet
 
 - **arm64 only.** libghostty-vt is built for `arm64-v8a`, which nearly every current phone is.
-- **Notifications aren't rate-limited.** OSC 7501 recommends limiting what a record can cause outside
-  the terminal. An agent flipping between states quickly would notify each time.
 - **Two style details differ from the server.** An underline's own color and OSC 8 hyperlinks
   aren't drawn yet ([fidelity results](docs/perf/results.md#2-fidelity)).
 - **Kitty images aren't drawn.** The engine keeps Kitty graphics images, but the view doesn't draw
@@ -181,8 +200,10 @@ scripts/bench-engine.sh                                                       # 
 - **Keys report presses only.** Soft keyboards don't tell an app when a key is let go, and the
   phone doesn't send a hardware keyboard's releases either, so a program that asks the Kitty
   protocol for release events doesn't get them.
-- **Answering happens in the terminal.** A card opens the pane and you answer there. OSC 7501 says
-  what an agent is waiting for, not what the choices are.
+- **Some answers need the terminal.** Home and notifications answer Claude Code's permission
+  prompts and single questions, three answers at most. Several questions at once, multi-select
+  questions, typed answers, answers past those three and other agents' prompts open the pane, and
+  you answer there.
 - **Releases are private for now.** Builds update from a private repository.
 
 ## Building

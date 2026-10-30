@@ -27,6 +27,12 @@ Changes from upstream:
   size. Termux's `JNI.java` and its native process code are removed.
 - The emulator tracks synchronized updates (mode 2026), and `TerminalSession` holds the screen
   update until one ends, so a frame split across network messages is never drawn half done.
+- `TerminalBuffer` copies only the rows Ghostty marks changed since the last frame, into buffers it
+  keeps, and holds only the last 512 rows of history read for the view.
+- `TerminalView` tells a `Watcher` when its window is shown or hidden and when it scrolls from
+  history back to the screen, so output nobody sees can wait and history read for it can be
+  compressed again. Once the app takes back gestures itself (predictive back), Android sends it no
+  back key, so a selection ends on Back through Android's back callback instead.
 
 What stays from Termux is the Android side: `TerminalView` and its gestures, scrolling and soft
 keyboard connection, `TerminalRenderer`, which draws the cells on a `Canvas`, and text selection.
