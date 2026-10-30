@@ -128,7 +128,6 @@ import androidx.compose.ui.zIndex
 import com.jeffarese.rexmobile.model.AppModel
 import com.jeffarese.rexmobile.model.BlockMeta
 import com.jeffarese.rexmobile.model.ConnStatus
-import com.jeffarese.rexmobile.model.HostConnection
 import com.jeffarese.rexmobile.model.KeepScreenOn
 import com.jeffarese.rexmobile.rex.ProgramStatus
 import com.jeffarese.rexmobile.rex.StreamState
@@ -188,6 +187,22 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
     var confirmClosePane by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // A new tab or split on its way, as the pill says it: one at a time, so a second tap doesn't make two.
+    var opening by remember { mutableStateOf<String?>(null) }
+    /** Asks the host for a tab or a split, saying what is on its way, and why if it didn't come. */
+    fun <T : Any> open(working: String, what: String, call: suspend () -> T?, then: (T) -> Unit = {}) {
+        if (opening != null) return
+        opening = working
+        scope.launch {
+            val made = try {
+                attempt(context, conn, what, call)
+            } finally {
+                opening = null
+            }
+            made?.let(then)
+        }
+    }
+    fun newTab() = open("Opening a tab…", "open a tab", { conn.newWindow(sid) }) { windowId = it }
 
     val viewport = remember {
         TerminalViewport(context, RexFonts.terminal(context)).apply {
@@ -393,18 +408,18 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
                     menu = true
                 }) { Icon(Icons.Outlined.MoreVert, "More", tint = Rex.text) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("New tab") }, onClick = {
+                    DropdownMenuItem(text = { Text("New tab") }, enabled = opening == null, onClick = {
                         menu = false
-                        scope.launch { conn.runCatchingNewWindow(sid)?.let { windowId = it } }
+                        newTab()
                     })
                     if (blockId != null) {
-                        DropdownMenuItem(text = { Text("Split right") }, onClick = {
+                        DropdownMenuItem(text = { Text("Split right") }, enabled = opening == null, onClick = {
                             menu = false
-                            scope.launch { runCatching { conn.splitBlock(sid, blockId, "horizontal") } }
+                            open("Splitting the pane…", "split the pane", { conn.splitBlock(sid, blockId, "horizontal") })
                         })
-                        DropdownMenuItem(text = { Text("Split down") }, onClick = {
+                        DropdownMenuItem(text = { Text("Split down") }, enabled = opening == null, onClick = {
                             menu = false
-                            scope.launch { runCatching { conn.splitBlock(sid, blockId, "vertical") } }
+                            open("Splitting the pane…", "split the pane", { conn.splitBlock(sid, blockId, "vertical") })
                         })
                     }
                     DropdownMenuItem(
@@ -443,9 +458,7 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
 
         // Tabs
         if (windows.isNotEmpty() && !imeVisible && !collapsed) {
-            WindowTabs(windows, win?.windowId, state.blocks, onSelect = { windowId = it }, onAdd = {
-                scope.launch { conn.runCatchingNewWindow(sid)?.let { windowId = it } }
-            })
+            WindowTabs(windows, win?.windowId, state.blocks, onSelect = { windowId = it }, adding = opening != null, onAdd = ::newTab)
         }
         if (win != null && win.blocks.size > 1 && !imeVisible && !collapsed) {
             PaneStrip(win, blockId, state.blocks) { chosenBlock = it }
@@ -474,7 +487,7 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
                 syncing -> "Loading…"
                 // Shown ahead of a long snapshot, and usable: new output follows once it is in.
                 catchingUp -> "Catching up…"
-                else -> null
+                else -> opening
             }
             StatusOverlay(
                 overlay,
@@ -1224,10 +1237,16 @@ private fun visibleText(terminal: RemoteTerminal, topRow: Int): String {
     return emu.screen.getSelectedText(0, topRow, emu.mColumns, topRow + emu.mRows - 1, true, true).trimEnd()
 }
 
-private suspend fun HostConnection.runCatchingNewWindow(sid: String): String? = runCatching { newWindow(sid) }.getOrNull()
-
+/** The window's tabs, and a "+" for a new one that shows a spinner and takes no more taps while one is [adding]. */
 @Composable
-private fun WindowTabs(windows: List<WindowView>, selected: String?, metas: Map<String, BlockMeta>, onSelect: (String) -> Unit, onAdd: () -> Unit) {
+private fun WindowTabs(
+    windows: List<WindowView>,
+    selected: String?,
+    metas: Map<String, BlockMeta>,
+    onSelect: (String) -> Unit,
+    adding: Boolean,
+    onAdd: () -> Unit,
+) {
     val listState = rememberLazyListState()
     LaunchedEffect(selected) {
         val i = windows.indexOfFirst { it.windowId == selected }
@@ -1279,9 +1298,20 @@ private fun WindowTabs(windows: List<WindowView>, selected: String?, metas: Map<
             }
         }
         item("add") {
+            val interaction = remember { MutableInteractionSource() }
             Box(
-                Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onAdd).padding(horizontal = 8.dp, vertical = 6.dp),
-            ) { Icon(Icons.Outlined.Add, "New tab", tint = Rex.textDim, modifier = Modifier.size(18.dp)) }
+                Modifier.reaching(Modifier.clickable(interaction, indication = null, enabled = !adding, role = Role.Button, onClick = onAdd))
+                    .clip(RoundedCornerShape(10.dp)).indication(interaction, ripple()).padding(horizontal = 8.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                // The spinner takes the icon's place, so the strip doesn't move.
+                if (adding) {
+                    CircularProgressIndicator(
+                        Modifier.size(18.dp).padding(1.dp).semantics { contentDescription = "Opening a tab" },
+                        strokeWidth = 1.5.dp, color = Rex.textDim,
+                    )
+                } else Icon(Icons.Outlined.Add, "New tab", tint = Rex.textDim, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }

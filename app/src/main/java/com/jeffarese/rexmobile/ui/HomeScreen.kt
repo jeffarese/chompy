@@ -478,7 +478,7 @@ private fun Modifier.dimmed(on: Boolean): Modifier {
  * Runs [call] against [conn]. When it fails or comes back empty, a toast says so, such as "Couldn't open a
  * tab on Studio: not connected", and the result is null.
  */
-private suspend fun <T : Any> attempt(context: Context, conn: HostConnection, what: String, call: suspend () -> T?): T? {
+internal suspend fun <T : Any> attempt(context: Context, conn: HostConnection, what: String, call: suspend () -> T?): T? {
     val failure: Throwable? = try {
         val result = call()
         if (result != null) return result
