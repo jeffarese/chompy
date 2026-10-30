@@ -35,8 +35,8 @@ android {
         applicationId = "com.jeffarese.rexmobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = 37
-        versionName = "0.3.15"
+        versionCode = 38
+        versionName = "0.3.16"
         buildConfigField("String", "DEFAULT_HOSTS", "\"${defaultHosts.replace("\"", "")}\"")
         // Only release builds update themselves: others are signed with another key, so couldn't.
         buildConfigField("String", "UPDATE_REPO", "\"\"")
