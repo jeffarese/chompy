@@ -22,7 +22,7 @@ data class Release(
     val version: String,
     /** The release's notes, as written on GitHub. */
     val notes: String,
-    /** The APK through GitHub's API, which serves private and public repositories alike. */
+    /** The APK, through GitHub's API. */
     val apkUrl: String,
     val apkName: String,
     val size: Long,
@@ -67,26 +67,16 @@ fun compareVersions(a: String, b: String): Int {
     return 0
 }
 
-/**
- * The app's releases on GitHub, in [repo] ("owner/name"). [token], a fine-grained token that can only
- * read that repository, reaches it while it is private. Once the repository is public, a token that
- * has expired or been revoked is dropped and the request made again without it, so builds that carry
- * one keep finding updates.
- */
-class ReleaseFeed(private val repo: String, private val token: String, private val http: OkHttpClient) {
-    @Volatile private var useToken = token.isNotBlank()
-    /** GitHub refused the token. A private repository is then a 404, which mustn't read as no release. */
-    @Volatile private var tokenRefused = false
-
+/** The app's releases on GitHub, in [repo] ("owner/name"), a public repository. */
+class ReleaseFeed(private val repo: String, private val http: OkHttpClient) {
     /** The newest release with an APK, or null if there is none. Blocking. */
     fun latest(): Release? {
         val request = Request.Builder().url("$API/repos/$repo/releases/latest")
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
             .build()
-        return call(request).use { r ->
+        return http.newCall(request).execute().use { r ->
             when {
-                r.code == 404 && tokenRefused -> throw IOException("GitHub refused the update token")
                 r.code == 404 -> null
                 !r.isSuccessful -> throw IOException(describe(r))
                 else -> parse(r.body!!.string())
@@ -102,7 +92,7 @@ class ReleaseFeed(private val repo: String, private val token: String, private v
         val request = Request.Builder().url(release.apkUrl).header("Accept", "application/octet-stream").build()
         val part = File(dest.path + ".part")
         val digest = MessageDigest.getInstance("SHA-256")
-        call(request).use { r ->
+        http.newCall(request).execute().use { r ->
             if (!r.isSuccessful) throw IOException(describe(r))
             val body = r.body!!
             val total = body.contentLength().takeIf { it > 0 } ?: release.size
@@ -132,22 +122,6 @@ class ReleaseFeed(private val repo: String, private val token: String, private v
             throw IOException("The download was damaged")
         }
         if (!part.renameTo(dest)) throw IOException("Couldn't save the download")
-    }
-
-    /**
-     * [request] with the token while it works. GitHub answers 401 to a bad token even for a public
-     * repository, so after one the token is left off for good, and a private one is out of reach. OkHttp drops the header itself when
-     * a download is redirected to GitHub's file storage, which refuses requests that carry it.
-     */
-    private fun call(request: Request): Response {
-        if (useToken) {
-            val r = http.newCall(request.newBuilder().header("Authorization", "Bearer $token").build()).execute()
-            if (r.code != 401) return r
-            r.close()
-            useToken = false
-            tokenRefused = true
-        }
-        return http.newCall(request).execute()
     }
 
     private fun describe(r: Response) = when (r.code) {

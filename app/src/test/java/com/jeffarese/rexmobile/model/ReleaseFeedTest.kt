@@ -87,48 +87,18 @@ class ReleaseFeedTest {
     }
 
     @Test
-    fun sendsTheTokenWhileItWorks() {
+    fun asksGitHubForTheLatestReleaseWithoutAToken() {
         val fake = FakeGitHub { 200 to releaseJson().toByteArray() }
-        val feed = ReleaseFeed("o/r", "tok", client(fake))
-        assertEquals("0.3.2", feed.latest()!!.version)
+        assertEquals("0.3.2", ReleaseFeed("o/r", client(fake)).latest()!!.version)
         assertEquals("https://api.github.com/repos/o/r/releases/latest", fake.requests.single().url.toString())
-        assertEquals("Bearer tok", fake.requests.single().header("Authorization"))
-    }
-
-    @Test
-    fun dropsATokenGitHubRefusesAndAsksWithout() {
-        // Public by now, and the token in this build expired: GitHub refuses it, though it would answer anyone.
-        val fake = FakeGitHub { r -> if (r.header("Authorization") != null) 401 to ByteArray(0) else 200 to releaseJson().toByteArray() }
-        val feed = ReleaseFeed("o/r", "expired", client(fake))
-        assertEquals("0.3.2", feed.latest()!!.version)
-        assertEquals(listOf("Bearer expired", null), fake.requests.map { it.header("Authorization") })
-
-        // And for good: the next request goes without it straight away.
-        feed.latest()
-        assertNull(fake.requests.last().header("Authorization"))
-        assertEquals(3, fake.requests.size)
-    }
-
-    @Test
-    fun aRefusedTokenFailsWhileTheRepositoryIsPrivate() {
-        // Still private, and the token expired: without it the repository is a 404, not a lack of releases.
-        val fake = FakeGitHub { r -> if (r.header("Authorization") != null) 401 to ByteArray(0) else 404 to ByteArray(0) }
-        val feed = ReleaseFeed("o/r", "expired", client(fake))
-        repeat(2) {
-            try {
-                feed.latest()
-                fail("expected a failure")
-            } catch (e: IOException) {
-                assertEquals("GitHub refused the update token", e.message)
-            }
-        }
+        assertNull(fake.requests.single().header("Authorization"))
     }
 
     @Test
     fun noReleaseIsNoUpdateAndOtherAnswersFail() {
-        assertNull(ReleaseFeed("o/r", "", client(FakeGitHub { 404 to ByteArray(0) })).latest())
+        assertNull(ReleaseFeed("o/r", client(FakeGitHub { 404 to ByteArray(0) })).latest())
         try {
-            ReleaseFeed("o/r", "", client(FakeGitHub { 500 to ByteArray(0) })).latest()
+            ReleaseFeed("o/r", client(FakeGitHub { 500 to ByteArray(0) })).latest()
             fail("expected a failure")
         } catch (e: IOException) {
             assertEquals("GitHub answered 500", e.message)
@@ -138,7 +108,7 @@ class ReleaseFeedTest {
     @Test
     fun downloadsTheApkAndChecksItsDigest() {
         val fake = FakeGitHub { 200 to apkBytes }
-        val feed = ReleaseFeed("o/r", "tok", client(fake))
+        val feed = ReleaseFeed("o/r", client(fake))
         val release = ReleaseFeed.parse(releaseJson())!!
         val dest = dir.root.resolve("rex.apk")
         var last = 0L to 0L
@@ -153,7 +123,7 @@ class ReleaseFeedTest {
 
     @Test
     fun aDamagedDownloadIsThrownAway() {
-        val feed = ReleaseFeed("o/r", "", client(FakeGitHub { 200 to apkBytes.copyOf(apkBytes.size - 1) }))
+        val feed = ReleaseFeed("o/r", client(FakeGitHub { 200 to apkBytes.copyOf(apkBytes.size - 1) }))
         val dest = dir.root.resolve("rex.apk")
         try {
             feed.download(ReleaseFeed.parse(releaseJson())!!, dest) { _, _ -> }

@@ -262,7 +262,7 @@ class HostConnection(
                         handleEvent(c, event)
                     } catch (e: Exception) {
                         currentCoroutineContext().ensureActive()
-                        Log.w(TAG, "skipped an event: $event", e)
+                        Log.w(TAG, "skipped an event of type ${event["type"]}", e)
                     }
                 }
             }

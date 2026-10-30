@@ -217,7 +217,7 @@ class FyiReaderTest {
         assertEquals("", fixture("claude-fyi-hint").claudeInput)
         val n = fixture("claude-fyi-hint").fyi!!
         assertEquals("Heads up", n.tag)
-        assertTrue(n.headline!!.startsWith("If the update token expires"))
+        assertTrue(n.headline!!.startsWith("If a release isn't marked as the latest"))
         assertEquals(offerActions, n.actions)
         assertTrue(n.body.isEmpty())
         assertTrue(n.actions.all(n::shows))

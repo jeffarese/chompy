@@ -7,13 +7,30 @@ It shows what your agents are doing on every machine at once, and opens a real t
 running the same engine as the Rex server, when one of them needs you.
 
 <p align="center">
-  <img src="docs/media/agent-board.gif" width="320" alt="Six agents start on a Rex server, each with a dot in its group's colour. The board sorts them as they report: two Claude Code agents need you, Terraform finishes, Cargo's tests fail. A tap on the Claude that asks which queue to use opens its terminal, where its question shows as a card and a tap answers it. The other Claude wants to run the tests; a tap on Yes in its card allows it. Once they pass, Claude leaves a note that shows as a card too: Learn more opens its explanation and Understood puts it away. Then Claude's controls open over the key bar, and its effort goes from high to max from the Effort chip's menu.">
+  <img src="docs/media/agent-board.gif" width="320" alt="Six agents start on a Rex server, each with a dot in its group's colour. The board sorts them as they report: two Claude Code agents need you, Terraform finishes, Cargo's tests fail. The Claude that asks which queue to use is answered from its card on the board, with one tap on webhooks, and goes back to work. The other Claude wants to run the tests: its terminal opens with the permission menu as a card, and a tap on Yes allows it. Once they pass, Claude leaves a note that shows as a card too: Learn more opens its explanation and Understood puts it away. Then Claude's controls open over the key bar, and its effort goes from high to max from the Effort chip's menu. Back on the board, a swipe clears Terraform's finished plan.">
 </p>
 <p align="center"><sub>
   48 seconds, unedited, on an emulator (<a href="docs/media/agent-board.mp4">MP4, 720p</a>).
   The agents are scripts that report with OSC 7501; the server, the app and the taps are real.
   <a href="docs/demo">How it was recorded.</a>
 </sub></p>
+
+## Get it
+
+- **[GitHub's releases](https://github.com/jeffarese/chompy/releases/latest).** Install the APK; from
+  then on the app finds new versions there itself and offers them on Home.
+- **Google Play**, once it is through Google's testing and review. Play will keep that one up to date.
+
+Both are signed with the same key, so you'll be able to move from one to the other without
+uninstalling. To check an APK is Chompy's, `apksigner verify --print-certs chompy-<version>.apk`
+should print this SHA-256 for the certificate:
+
+```
+64:03:CD:23:09:07:AF:16:1F:18:22:B7:1B:DA:99:31:64:A5:C2:CB:84:7C:08:C1:84:F0:36:C3:89:2A:59:4A
+```
+
+You need a [Rex](https://www.superlogical.com) server of your own that the phone can reach, for example
+over Tailscale, and a phone with a 64-bit ARM processor on Android 8 or later.
 
 ## On a phone, the agents come first
 
@@ -60,7 +77,7 @@ rather than guessing from the screen:
   nothing if the question, the command or the options have changed.
 
 <p align="center">
-  <img src="docs/media/board.png" width="250" alt="The board: Claude asking to run the tests under Needs you, a failed test run with its subtasks, a finished Terraform plan and three agents working.">
+  <img src="docs/media/board.png" width="250" alt="The board: under Needs you, Claude asking which queue to use and Claude asking to run the tests, each card with its answers; below them a failed test run with its subtasks, a finished Terraform plan and agents working.">
   <img src="docs/media/answer.png" width="250" alt="The terminal opened on the Claude that wants permission, with its menu as a card: Yes, Yes and don't ask again, or No.">
   <img src="docs/media/note.png" width="250" alt="Once the tests pass, Claude leaves a note, shown as a card: what happened, why, and what to do.">
 </p>
@@ -164,13 +181,14 @@ app uses it:
   and arrows can be rearranged in Settings, as can Claude's strip.
 - The system's own copy confirmation on Android 13 and later, and landscape layouts that keep clear
   of cutouts.
-- Updates come from the app's own GitHub releases. A download installs only if its SHA-256 matches,
-  it is Chompy, it is newer, and it is signed with the same key.
+- Installed from GitHub, the app updates itself from its releases there. A download installs only if
+  its SHA-256 matches, it is Chompy, it is newer, and it is signed with the same key. Installed from
+  Google Play, Play updates it, and the app has no updater of its own.
 
-Each program in a tab shows its own logo on its brand's color, from [Simple Icons](https://simpleicons.org)
+Each program in a tab shows its own logo on its brand's colour, from [Simple Icons](https://simpleicons.org)
 (CC0), [Lobe Icons](https://github.com/lobehub/lobe-icons) (MIT) and [Iconify's logos](https://github.com/gilbarbara/logos)
 (CC0) or the project's own repository, with [Lucide](https://lucide.dev) (ISC) glyphs for generic
-programs and ones whose logo isn't free to use ([`art/glyphs`](art/glyphs) lists each one's source). Settings › Look has all 41 of Rex's themes.
+programs and ones whose logo isn't free to use ([`art/glyphs`](art/glyphs) lists each one's source and [license](art/glyphs/GLYPH-LICENSES.txt)). Settings › Look has all 41 of Rex's themes.
 
 ## Measured, not assumed
 
@@ -183,7 +201,9 @@ The claims above come from tests that run against a real Rex server, not a mock:
   slow links, compressed streams, early screens, pausing on return, prompts, scrolling under Claude
   and the full UI. They are skipped unless `REX_LIVE_HOST` is set.
 - **Unit tests.** About 480 tests in all, live ones included. Among them: the board's grouping and
-  order, agents that finished while the app was away, and subtasks that must not alert.
+  order, agents that finished while the app was away, and subtasks that must not alert. They run the
+  terminal on the Mac's build of libghostty-vt (`terminal/native/host/librexterm.dylib`), so they need
+  an Apple silicon Mac.
 
 ```sh
 ./gradlew :app:testDebugUnitTest                                              # unit tests
@@ -194,7 +214,7 @@ scripts/bench-engine.sh                                                       # 
 ## What it doesn't do yet
 
 - **arm64 only.** libghostty-vt is built for `arm64-v8a`, which nearly every current phone is.
-- **Two style details differ from the server.** An underline's own color and OSC 8 hyperlinks
+- **Two style details differ from the server.** An underline's own colour and OSC 8 hyperlinks
   aren't drawn yet ([fidelity results](docs/perf/results.md#2-fidelity)).
 - **Kitty images aren't drawn.** The engine keeps Kitty graphics images, but the view doesn't draw
   them yet.
@@ -205,11 +225,10 @@ scripts/bench-engine.sh                                                       # 
   prompts and single questions, three answers at most. Several questions at once, multi-select
   questions, typed answers, answers past those three and other agents' prompts open the pane, and
   you answer there.
-- **Releases are private for now.** Builds update from a private repository.
 
 ## Building
 
-You need JDK 21 and the Android SDK (API 35, NDK 30). The native library is checked in, so Zig is
+You need JDK 21 and the Android SDK (API 36, NDK 30). The native library is checked in, so Zig is
 only needed to rebuild it (`scripts/build-libghostty.sh`).
 
 ```sh
@@ -220,11 +239,13 @@ Optional settings live in `local.properties`, which is not committed:
 
 | Key | What it does |
 |---|---|
-| `rex.defaultHosts` | Hosts offered on first launch, as `Label=address,Label=address`. A build can also pass `-Prex.defaultHosts=...`. |
-| `rex.updateRepo`, `rex.updateToken` | Where release builds look for updates, and a read-only token while that repository is private |
+| `rex.defaultHosts` | Hosts offered on first launch of a debug build, as `Label=address,Label=address`. A build can also pass `-Prex.defaultHosts=...`. Release and Play builds offer none. |
+| `rex.updateRepo` | Where release builds look for updates, `jeffarese/chompy` unless set |
 
-Release signing comes from `keystore.properties`. Without it, release builds are signed with the
-debug key, so they still install.
+`./gradlew :app:assembleRelease` makes the APK for GitHub, and `./gradlew :app:bundlePlay` the bundle
+for Google Play, which leaves the updater out. Their signing keys come from `keystore.properties`.
+Without it, both are signed with the debug key, so they still install.
+[`docs/play`](docs/play/README.md) has the rest: the keys, Play's forms, and how a version is released.
 
 ## Where things are
 
@@ -235,11 +256,14 @@ debug key, so they still install.
 | `app/src/main/java/.../terminal` | The remote terminal: streams, snapshots, input, reading prompts off the screen |
 | `app/src/main/java/.../ui` | Compose screens: Home and the board, the terminal, Settings, onboarding |
 | `terminal/` | The terminal view, from Termux, over libghostty-vt: the JNI bridge, the native library, and Android's keys as Ghostty's |
-| `docs/perf`, `docs/demo` | The benchmark harness and [results](docs/perf/results.md); how the demo video was made |
+| `docs/perf`, `docs/demo` | The benchmark harness and [results](docs/perf/results.md); how the demo video, stills and Play's videos were made |
+| `docs/play`, `fastlane/` | How Chompy goes to Google Play, and its store listing |
 | `scripts/` | Building libghostty, benchmarks, publishing releases |
 
 Copyright 2026 Jeff Arese. Chompy's own code is under the [Apache License 2.0](LICENSE);
 [`terminal/NOTICE.md`](terminal/NOTICE.md) lists what it builds on and their licenses.
+[PRIVACY.md](PRIVACY.md) says what the app sends where (only to your own servers, and Google's code
+scanner if you scan a pairing code), and [SECURITY.md](SECURITY.md) how to report a security problem.
 
 Chompy is unofficial: it isn't affiliated with or endorsed by Superlogical, and uses Rex's public API.
 Rex belongs to Superlogical, and each program's logo to its owner. Jujutsu's logo is copyright 2025

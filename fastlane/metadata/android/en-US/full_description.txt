@@ -1,0 +1,39 @@
+Chompy shows what your coding agents are doing on every machine at once, and opens a real terminal when one of them needs you. It is an unofficial client for Rex, Superlogical's terminal multiplexer, and connects to the Rex servers you run yourself.
+
+THE AGENTS COME FIRST
+
+Home opens on a board of every agent on every host, ordered by what needs you:
+• Needs you: agents waiting for permission, a question or a password, longest waiting first
+• Failed and Done: results you haven't looked at yet, even ones that finished while your phone was asleep
+• Working: agents still running, with progress when they report it
+
+When Claude Code asks for permission or asks a question, its card offers the answers, so one tap answers it from Home or from its notification. Before pressing an answer, Chompy reads the screen again, and presses nothing if the question has changed.
+
+Every status comes from the program itself, through Rex's OSC 7501 program status protocol. Nothing is guessed from what's on the screen.
+
+THE SERVER'S OWN TERMINAL
+
+The terminal runs libghostty-vt, the engine of the Ghostty terminal, at the same version as the Rex server. Phone and server read the same bytes with the same code. Keys are sent as Ghostty on the desktop sends them, Kitty keyboard protocol included, so Shift+Enter starts a new line in Claude Code. History scrolls on the phone, without waiting for the network.
+
+MADE FOR PHONE NETWORKS
+
+• Slow mobile links don't drop streams, and the current screen shows before the history has loaded
+• Moving between Wi-Fi and mobile data reconnects at once
+• Coming back to the app is instant, and what happened while you were away is caught up
+• A host that's asleep is tried less and less often while you're away, to spare the battery
+
+NATIVE TO ANDROID
+
+• Notifications for agents that need you, finish or fail, each on its own channel
+• Pairing by scanning the code from rex server tailscale pair
+• Material 3, predictive back, TalkBack labels, and your last panes on the app icon's long press
+• All 41 of Rex's themes
+
+WHAT YOU NEED
+
+• A Rex server of your own that your phone can reach, for example over Tailscale
+• A phone with a 64-bit ARM processor, on Android 8 or later
+
+Chompy is open source, under the Apache License 2.0: https://github.com/jeffarese/chompy
+
+Chompy is unofficial: it isn't affiliated with or endorsed by Superlogical. Rex belongs to Superlogical, and each program's logo to its owner.

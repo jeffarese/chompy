@@ -9,6 +9,9 @@ permission menu, a "You should know" note and the effort it thinks at), so the a
 controls for them, and one takes `/effort` as Claude does. Everything else (the server, the protocol, the
 app, the taps) is real.
 
+The same run makes the README's stills, the Play listing's screenshots and its promo video, and the
+video Play asks for to show what the foreground service does.
+
 ## Record it again
 
 1. Run a separate Rex server for the demo, on loopback only, so none of your own sessions show. The
@@ -46,10 +49,11 @@ app, the taps) is real.
 
 4. Run `docs/demo/record.sh`. It stages six sessions ([stage.sh](stage.sh)), clears the app's data so
    nothing from an earlier take shows, starts the recording and starts every agent at once. They work
-   for a few seconds before the first one needs anything. It answers Claude's question from its card,
-   then opens the Claude asking for permission, taps Yes, opens the note Claude leaves once the tests
-   pass and puts it away. Then it opens Claude's controls from the key bar, turns its effort up from
-   high to max, and goes back to the board. The raw video lands in `build/demo/demo-raw.mp4`.
+   for a few seconds before the first one needs anything. It answers Claude's question from its card on
+   Home, then opens the Claude asking for permission, taps Yes in its terminal, opens the note Claude
+   leaves once the tests pass and puts it away. Then it opens Claude's controls from the key bar, turns
+   its effort up from high to max, goes back to the board and clears Terraform's finished plan with a
+   swipe. The raw video lands in `build/demo/demo-raw.mp4`.
 
 5. Encode it for the README:
 
@@ -60,5 +64,35 @@ app, the taps) is real.
    [a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle" \
      docs/media/agent-board.gif
    ```
+
+## Stills
+
+`SHOTS=<dir> docs/demo/record.sh` runs the same takes without recording, and saves a screenshot at each
+moment instead: `board`, `answered`, `permission`, `note`, `note-open`, `effort` and `done`. It waits a
+little longer at some of them, for the last banner to go and the note's card to settle.
+
+- **The README's** come from a run at the emulator's own size, scaled to 540×1200: `board` is
+  `docs/media/board.png`, `permission` is `answer.png` and `note-open` is `note.png`.
+- **Play's** come from a run at 1080×1920, since Play takes no screenshot longer than twice its width.
+  Run `adb shell wm size 1080x1920` first, and `adb shell wm size reset` after. They are
+  `fastlane/metadata/android/en-US/images/phoneScreenshots`: the board, a notification (below),
+  permission, the note, Claude's controls, and Settings › Look › Theme.
+
+## For Google Play
+
+- **Notify when away.** With the app open on Settings › Alerts and Notify when away off,
+  `docs/demo/away.sh` records it being turned on, Android's battery question, the app being left, Claude's
+  question arriving as a notification, and its answer from there. The video lands in
+  `build/demo/away-raw.mp4`, for the foreground service declaration, and the notification shade in
+  `build/demo/notification.png`, for the listing.
+- **The promo video**, landscape as Play shows it: the take over a backdrop with the name, made by
+  [`store-art.py`](../play/store-art.py) with the icon and the feature graphic.
+
+  ```sh
+  python3 docs/play/store-art.py
+  ffmpeg -loop 1 -i build/demo/promo-backdrop.png -ss 1.5 -i build/demo/demo-raw.mp4 \
+    -filter_complex "[1:v]fps=60,scale=486:1080:flags=lanczos[p];[0:v][p]overlay=1250:0:shortest=1,format=yuv420p" \
+    -c:v libx264 -preset slow -crf 20 -r 60 -movflags +faststart -an build/demo/chompy-promo-1080p.mp4
+  ```
 
 Stop the server with Ctrl-C when done; its state is all under `build/demo/state`.

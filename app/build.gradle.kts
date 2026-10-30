@@ -11,36 +11,39 @@ plugins {
 // Hosts to offer on first launch, as "Label=address,Label=address". Kept out of git in
 // local.properties (rex.defaultHosts=...) so the repo carries no tailnet names. A build can name its
 // own with -Prex.defaultHosts=..., such as the demo build in docs/demo, pointed at a local demo server.
+// Release and play builds are published, so they never take local.properties' hosts. A release build
+// takes ones named with -P, for the startup benchmark and the baseline profile, and its version then
+// ends in -hosts; a play build takes none.
 val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
-val defaultHosts: String = (findProperty("rex.defaultHosts") as String?) ?: localProps.getProperty("rex.defaultHosts", "")
+val namedHosts: String? = findProperty("rex.defaultHosts") as String?
+val defaultHosts: String = namedHosts ?: localProps.getProperty("rex.defaultHosts", "")
 
-// Where release builds find their updates: the GitHub releases of rex.updateRepo. While that repository
-// is private, rex.updateToken is a fine-grained token that can only read it, also kept in local.properties.
-val updateRepo: String = localProps.getProperty("rex.updateRepo", "jeffarese/rex-android-releases")
-val updateToken: String = localProps.getProperty("rex.updateToken", "")
+// Where release builds find their updates: the GitHub releases of rex.updateRepo, a public repository.
+val updateRepo: String = localProps.getProperty("rex.updateRepo", "jeffarese/chompy")
 
 // Release signing comes from keystore.properties (also untracked); without it, release builds use
-// the debug key so a sideloadable APK can still be produced.
+// the debug key so a sideloadable APK can still be produced. The play build is signed with the upload
+// key, upload* in the same file, and Google Play signs what it serves with the release key, so a
+// release APK installs over the app from Play and the other way round.
 val keystoreProps = Properties().apply {
     rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
 android {
     namespace = "com.jeffarese.rexmobile"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.jeffarese.rexmobile"
+        applicationId = "com.jeffarese.chompy"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 38
-        versionName = "0.3.16"
+        targetSdk = 36
+        versionCode = 39
+        versionName = "0.4.0"
         buildConfigField("String", "DEFAULT_HOSTS", "\"${defaultHosts.replace("\"", "")}\"")
         // Only release builds update themselves: others are signed with another key, so couldn't.
         buildConfigField("String", "UPDATE_REPO", "\"\"")
-        buildConfigField("String", "UPDATE_TOKEN", "\"\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The terminal engine, libghostty-vt, is built for 64-bit ARM only (scripts/build-libghostty.sh).
         ndk { abiFilters += "arm64-v8a" }
@@ -55,6 +58,14 @@ android {
                 keyPassword = keystoreProps.getProperty("keyPassword")
             }
         }
+        if (keystoreProps.getProperty("uploadStoreFile") != null) {
+            create("upload") {
+                storeFile = rootProject.file(keystoreProps.getProperty("uploadStoreFile"))
+                storePassword = keystoreProps.getProperty("uploadStorePassword")
+                keyAlias = keystoreProps.getProperty("uploadKeyAlias")
+                keyPassword = keystoreProps.getProperty("uploadKeyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -63,10 +74,22 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            buildConfigField("String", "DEFAULT_HOSTS", "\"${namedHosts.orEmpty().replace("\"", "")}\"")
+            // scripts/publish-release.sh refuses a version with a suffix.
+            if (namedHosts != null) versionNameSuffix = "-hosts"
             if (signingConfigs.findByName("release") != null) {
                 buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
-                buildConfigField("String", "UPDATE_TOKEN", "\"$updateToken\"")
             }
+        }
+        // For Google Play, as an app bundle (bundlePlay): a release that leaves updating to Play, as Play
+        // requires, so it has no updater and can't install apps (src/play/AndroidManifest.xml).
+        create("play") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            buildConfigField("String", "DEFAULT_HOSTS", "\"\"")
+            versionNameSuffix = null
+            buildConfigField("String", "UPDATE_REPO", "\"\"")
+            matchingFallbacks += "release"
         }
         // For the instrumented engine benchmarks: like debug, but not debuggable, so ART compiles the
         // engine as it does in a release. See docs/perf/README.md.
@@ -106,9 +129,11 @@ android {
     }
 }
 
-// The benchmark build type is for instrumented benchmarks only: no unit test run of its own.
+// The benchmark build type is for instrumented benchmarks only, and play differs from release only in
+// what it leaves out: no unit test run of their own.
 androidComponents {
     beforeVariants(selector().withBuildType("benchmark")) { it.enableUnitTest = false }
+    beforeVariants(selector().withBuildType("play")) { it.enableUnitTest = false }
 }
 
 // The app's baseline profile, from the generator in :baselineprofile (scripts/generate-baseline-profile.sh).
@@ -119,11 +144,12 @@ baselineProfile {
     mergeIntoMain = true
 }
 
-// The font's and the terminal engine's licenses ship inside the app, for Settings' open-source licenses page.
+// The fonts', the terminal engine's and the tab logos' licenses ship inside the app, for Settings' open-source licenses page.
 val licenseAssets = layout.buildDirectory.dir("generated/licenseAssets")
 val copyLicenses by tasks.registering(Copy::class) {
     from("FONT-LICENSE-OFL.txt")
     from(rootProject.file("terminal/native/ENGINE-LICENSES.txt"))
+    from(rootProject.file("art/glyphs/GLYPH-LICENSES.txt"))
     into(licenseAssets.map { it.dir("licenses") })
 }
 android.sourceSets.getByName("main").assets.srcDir(licenseAssets)

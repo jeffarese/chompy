@@ -15,7 +15,8 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h914dp-xxhdpi")
 class PredictiveBackTest {
-    @get:Rule val rule = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 0) val skipWelcome = SkipWelcome()
+    @get:Rule(order = 1) val rule = createAndroidComposeRule<MainActivity>()
 
     private val back get() = rule.activity.onBackPressedDispatcher
 

@@ -142,7 +142,7 @@ class AppModel(
         context, scope,
         BuildConfig.UPDATE_REPO.takeIf { it.isNotBlank() }?.let { repo ->
             // Downloads need a read timeout, which the hosts' long-lived sockets go without.
-            ReleaseFeed(repo, BuildConfig.UPDATE_TOKEN, http.newBuilder().readTimeout(30, TimeUnit.SECONDS).pingInterval(0, TimeUnit.SECONDS).build())
+            ReleaseFeed(repo, http.newBuilder().readTimeout(30, TimeUnit.SECONDS).pingInterval(0, TimeUnit.SECONDS).build())
         },
     )
 

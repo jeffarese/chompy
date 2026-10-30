@@ -6,6 +6,10 @@ listed in the Nerd Fonts repository).
 
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
+The bundled Noto Sans Symbols and Noto Sans Symbols 2 are Copyright 2022 The Noto Project Authors
+(https://github.com/notofonts/symbols), and Noto Sans Math is Copyright 2022 Google LLC, all under the
+same license.
+
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
 https://openfontlicense.org

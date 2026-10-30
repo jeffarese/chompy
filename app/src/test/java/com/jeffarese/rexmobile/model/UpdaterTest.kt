@@ -66,7 +66,7 @@ class UpdaterTest {
     private val profilesMade = AtomicInteger()
 
     private fun updater(current: String = "0.3.1") = Updater(
-        context, scope, ReleaseFeed("o/r", "", OkHttpClient.Builder().addInterceptor(github).build()),
+        context, scope, ReleaseFeed("o/r", OkHttpClient.Builder().addInterceptor(github).build()),
         currentVersion = current, dir = dir, verify = { problem }, metered = { metered }, clock = { now },
         makeProfile = { profilesMade.incrementAndGet(); profile() },
     )

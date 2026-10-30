@@ -50,7 +50,7 @@ class BaselineProfileGenerator {
     }
 
     private companion object {
-        const val PACKAGE = "com.jeffarese.rexmobile"
+        const val PACKAGE = "com.jeffarese.chompy"
         const val TAB = "bench-history"
     }
 }

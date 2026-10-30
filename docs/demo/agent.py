@@ -239,10 +239,10 @@ class Claude:
 
 def claude():
     app, title = "claude-code", "Fix reconnect after a network change"
-    pwd("/Users/dev/src/rex-android")
+    pwd("/Users/dev/src/chompy")
     status("idle", app=app, title=title)
     wait_start()
-    c = Claude(app, title, "rex-android")
+    c = Claude(app, title, "chompy")
     c.say("❯ ", "The app doesn't reconnect after switching from wifi to LTE", pause=0.5)
     status("working", app=app, title=title, msg="Reading HostConnection.kt")
     c.spinner = "Reading…"
@@ -355,13 +355,13 @@ def cargo():
 
 
 def gemini():
-    app, title = "gemini", "Draft the 0.3.3 release notes"
+    app, title = "gemini", "Draft the 0.4.1 release notes"
     pwd("/Users/dev/src/site")
     status("idle", app=app, title=title)
     wait_start()
     steps = ["Reading the changelog", "Summarising 14 commits", "Writing highlights", "Checking links",
              "Polishing the wording"]
-    say(f"{BOLD}gemini{RESET} Draft the 0.3.3 release notes\n")
+    say(f"{BOLD}gemini{RESET} Draft the 0.4.1 release notes\n")
     i = 0
     while True:
         status("working", app=app, title=title, msg=steps[i % len(steps)])

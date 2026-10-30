@@ -51,7 +51,7 @@ class UpdatesTest {
     }
 
     private fun updater(current: String, metered: Boolean) = Updater(
-        context, scope, ReleaseFeed("o/r", "", OkHttpClient.Builder().addInterceptor(github).build()),
+        context, scope, ReleaseFeed("o/r", OkHttpClient.Builder().addInterceptor(github).build()),
         currentVersion = current, dir = dir, verify = { null }, metered = { metered },
     )
 

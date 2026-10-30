@@ -3,7 +3,7 @@ package com.jeffarese.rexmobile.ui
 import androidx.compose.ui.graphics.Color
 import com.jeffarese.rexmobile.R
 
-// Generated from art/glyphs: each program's own logo from Simple Icons (CC0), Lobe Icons (MIT) or
+// Made from art/glyphs: each program's own logo from Simple Icons (CC0), Lobe Icons (MIT) or
 // Iconify's logos (CC0) or the project's own repository, and Lucide (ISC) glyphs for generic programs
 // and ones whose logo isn't free to use.
 // art/glyphs/manifest.json says where each one comes from. Template glyphs are white shapes to

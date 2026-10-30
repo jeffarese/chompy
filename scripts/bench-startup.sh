@@ -22,7 +22,7 @@ DM=${2:-}
 : "${ANDROID_SERIAL:?set ANDROID_SERIAL to a booted emulator}"
 SDK=${ANDROID_SDK_ROOT:-/opt/homebrew/share/android-commandlinetools}
 ADB="$SDK/platform-tools/adb"
-PKG=com.jeffarese.rexmobile
+PKG=com.jeffarese.chompy
 RUNS=${BENCH_RUNS:-8}
 MODES=${BENCH_MODES:-verify speed-profile speed}
 OUT=app/build/bench
@@ -53,7 +53,7 @@ echo "installed: $(status)"
 
 # Where the session's tab is on Home, read once from the screen.
 "$ADB" shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS
-"$ADB" shell am start -W -n "$PKG/.MainActivity" >/dev/null
+"$ADB" shell am start -W -n "$PKG/com.jeffarese.rexmobile.MainActivity" >/dev/null
 sleep 4
 "$ADB" shell uiautomator dump /sdcard/ui.xml >/dev/null
 read -r TAB_X TAB_Y < <("$ADB" exec-out cat /sdcard/ui.xml | python3 -I -c '
@@ -105,7 +105,7 @@ for run in $(seq "$RUNS"); do
         [[ $run == 1 ]] && echo "$mode: $(status)"
         "$ADB" shell am force-stop "$PKG"
         sleep 1
-        start=$("$ADB" shell am start -W -n "$PKG/.MainActivity" | sed -n 's/^TotalTime: //p' | tr -d '\r')
+        start=$("$ADB" shell am start -W -n "$PKG/com.jeffarese.rexmobile.MainActivity" | sed -n 's/^TotalTime: //p' | tr -d '\r')
         read -r c0 _ < <(cpu)
         # Home connects to the host and lists its tabs.
         sleep 3

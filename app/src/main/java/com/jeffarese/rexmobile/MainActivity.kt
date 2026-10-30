@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Back from allowing Rex to install apps, or from Android's confirmation: the update goes on from there.
+        // Back from allowing Chompy to install apps, or from Android's confirmation: the update goes on from there.
         if (CrashLog.read(this) == null) (application as RexMobileApp).model.updater.onResume()
     }
 

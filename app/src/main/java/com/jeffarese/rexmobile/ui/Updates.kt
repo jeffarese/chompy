@@ -73,7 +73,7 @@ import com.jeffarese.rexmobile.model.UpdateState
 import com.jeffarese.rexmobile.model.Updater
 import com.jeffarese.rexmobile.model.releaseNoteLines
 
-/** Install the downloaded update, first sending the user to let Rex install apps if Android doesn't yet. */
+/** Install the downloaded update, first sending the user to let Chompy install apps if Android doesn't yet. */
 fun startInstall(updater: Updater, context: Context) {
     if (updater.canInstall()) updater.install()
     else runCatching { context.startActivity(updater.permissionIntent()) }

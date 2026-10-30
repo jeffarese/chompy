@@ -357,7 +357,7 @@ private fun ConnectStep(model: AppModel, onAdded: () -> Unit) {
                     Text(
                         "${hostOf(p.url)} is on a tailnet. " +
                             (if (missing) "Install Tailscale and sign in to the Mac's tailnet" else "Turn Tailscale on") +
-                            ", and Rex connects by itself.",
+                            ", and Chompy connects by itself.",
                         color = Rex.textDim, fontSize = 13.sp, lineHeight = 18.sp,
                     )
                     TextButton(

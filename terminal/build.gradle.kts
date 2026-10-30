@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.jeffarese.rexmobile.terminal.view"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig { minSdk = 26 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

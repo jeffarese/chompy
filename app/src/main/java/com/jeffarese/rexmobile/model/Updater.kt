@@ -52,8 +52,8 @@ sealed interface UpdateState {
  * Keeps the app up to date from its releases on GitHub: checks now and then while the app is open,
  * downloads a new version by itself on Wi-Fi, and installs it when the user says so.
  *
- * Android asks the user once to let Rex install apps, then to confirm the first update. From then
- * on Rex installed itself, so on Android 12 and later its updates need no confirming.
+ * Android asks the user once to let Chompy install apps, then to confirm the first update. From then
+ * on Chompy installed itself, so on Android 12 and later its updates need no confirming.
  */
 class Updater(
     private val context: Context,
@@ -86,7 +86,7 @@ class Updater(
     /** When a check last reached GitHub, in milliseconds since the epoch, or 0. */
     val lastChecked: Long get() = prefs.getLong(CHECKED_AT, 0)
 
-    /** Install once Android lets Rex, after sending the user to allow it. */
+    /** Install once Android lets Chompy, after sending the user to allow it. */
     @Volatile private var installWhenAllowed = false
     @Volatile private var session: Int? = null
     /** Android's confirmation for [session], to show again if the user left the app while it was up. */
@@ -192,16 +192,16 @@ class Updater(
         }
     }
 
-    /** Whether Android lets Rex install apps. Without it, [permissionIntent] asks. */
+    /** Whether Android lets Chompy install apps. Without it, [permissionIntent] asks. */
     fun canInstall(): Boolean = context.packageManager.canRequestPackageInstalls()
 
-    /** Android's page for letting Rex install apps. [install] runs on coming back once it is allowed. */
+    /** Android's page for letting Chompy install apps. [install] runs on coming back once it is allowed. */
     fun permissionIntent(): Intent {
         installWhenAllowed = true
         return Intent(SystemSettings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
     }
 
-    /** Hand the downloaded version to Android. Rex closes when it is installed. */
+    /** Hand the downloaded version to Android. Chompy closes when it is installed. */
     fun install() {
         val ready = _state.value as? UpdateState.Ready ?: return
         session = null
@@ -272,7 +272,7 @@ class Updater(
                 confirm = it
                 showConfirm(it)
             }
-            // Rex is replaced and this process ends; the new version tells the user it is there.
+            // Chompy is replaced and this process ends; the new version tells the user it is there.
             PackageInstaller.STATUS_SUCCESS -> Unit
             else -> {
                 session = null
@@ -327,7 +327,7 @@ class Updater(
 
         private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        /** Rex has just been replaced. If it replaced itself, say so, as the old one closed under the user. */
+        /** Chompy has just been replaced. If it replaced itself, say so, as the old one closed under the user. */
         fun onReplaced(context: Context) {
             val prefs = prefs(context)
             if (prefs.getString(INSTALLING, null) != BuildConfig.VERSION_NAME) return
@@ -346,7 +346,7 @@ class Updater(
         private fun isMetered(context: Context) =
             context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered ?: true
 
-        /** Why [apk] can't update this app, or null if it can: it must be Rex, newer, and signed with the same key. */
+        /** Why [apk] can't update this app, or null if it can: it must be Chompy, newer, and signed with the same key. */
         fun checkApk(context: Context, apk: File): String? {
             val pm = context.packageManager
             @Suppress("DEPRECATION")

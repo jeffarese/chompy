@@ -7,7 +7,7 @@ import android.content.pm.PackageInstaller
 import androidx.core.content.IntentCompat
 import com.jeffarese.rexmobile.model.Updater
 
-/** Android's word on an update Rex is installing, and on Rex having been replaced. */
+/** Android's word on an update Chompy is installing, and on Chompy having been replaced. */
 class UpdateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {

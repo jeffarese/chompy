@@ -12,7 +12,7 @@ for id in $($R ls --json 2>/dev/null | python3 -I -c 'import json,sys; [print(s[
   $R kill $id >/dev/null
 done
 mk() { $R new $1 --window $2 --shell none -- /usr/bin/python3 -I $D/agent.py $3 $OUT/start >/dev/null; }
-mk rex-android "fix reconnect" claude
+mk chompy "fix reconnect" claude
 mk billing "webhook retries" claude-asks
 mk deploy-tool "cobra" codex
 mk infra "staging" terraform

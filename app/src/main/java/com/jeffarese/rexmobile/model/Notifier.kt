@@ -22,7 +22,7 @@ import com.jeffarese.rexmobile.terminal.ScreenPrompt
 
 /**
  * The phone's own notifications: one per pane for what an agent or program did while the app was
- * away, the quiet one Android needs while [WatchService] keeps the hosts connected, and one when Rex
+ * away, the quiet one Android needs while [WatchService] keeps the hosts connected, and one when Chompy
  * has updated itself.
  *
  * Each kind of alert has a channel of its own, so Android's settings can quiet one and not the
@@ -194,7 +194,7 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
             )
             .build()
 
-    /** Rex closed to update itself to [version]: one tap opens it again. */
+    /** Chompy closed to update itself to [version]: one tap opens it again. */
     fun updated(version: String) {
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
             .setSmallIcon(R.drawable.ic_notification)

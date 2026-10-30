@@ -14,8 +14,8 @@ SDK=${ANDROID_SDK_ROOT:-/opt/homebrew/share/android-commandlinetools}
 ADB="$SDK/platform-tools/adb"
 EMULATOR="$SDK/emulator/emulator"
 AVD=${BENCH_AVD:-rexmobile-test}
-PKG=com.jeffarese.rexmobile
-CLASS=$PKG.bench.EngineBench${1:+#$1}
+PKG=com.jeffarese.chompy
+CLASS=com.jeffarese.rexmobile.bench.EngineBench${1:+#$1}
 OUT=app/build/bench
 mkdir -p "$OUT"
 

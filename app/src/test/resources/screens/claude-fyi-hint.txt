@@ -3,7 +3,7 @@
 
 ✻ Cogitated for 2m 17s · done 4:50 AM
                                                                                                                                                                    [-]
-✦ Heads up · If the update token expires while the releases repo is still private, the app will wrongly say "Up to date", so you won't notice updates stopped.
+✦ Heads up · If a release isn't marked as the latest on GitHub, the app will wrongly say "Up to date", so you won't notice the new version.
   1: Learn more   2: Knew this already   0: Dismiss
                                                                                                                                new task? /clear to save 178.2k tokens
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── In-app update delivery ─

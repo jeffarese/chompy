@@ -825,7 +825,7 @@ private val NOTICES = listOf(
     "OkHttp" to "Apache License 2.0.",
     "Kotlin, kotlinx.coroutines and kotlinx.serialization" to "Apache License 2.0.",
     "AndroidX, Jetpack Compose and Material icons" to "Apache License 2.0.",
-    "Program logos in tabs" to "Simple Icons and Iconify's logos (CC0), Lobe Icons (MIT), Lucide (ISC), and some projects' own logos under their licenses. Each logo belongs to its owner.",
+    "Program logos in tabs" to "Simple Icons and Iconify's logos (CC0), Lobe Icons (MIT), Lucide (ISC), and some projects' own logos under their licenses, below. Each logo belongs to its owner.",
     "Jujutsu's logo" to "Copyright 2025 J. Jennings, SVG by Lucas Garron. CC BY 4.0.",
     "Chompy" to "Its style borrows from the Android robot, reproduced or modified from work created and shared by Google and used according to the Creative Commons 3.0 Attribution License.",
 )
@@ -834,7 +834,7 @@ private val NOTICES = listOf(
 private fun LicensesPage(onBack: () -> Unit) {
     val context = LocalContext.current
     val texts = remember {
-        listOf("licenses/ENGINE-LICENSES.txt", "licenses/FONT-LICENSE-OFL.txt").mapNotNull { name ->
+        listOf("licenses/ENGINE-LICENSES.txt", "licenses/GLYPH-LICENSES.txt", "licenses/FONT-LICENSE-OFL.txt").mapNotNull { name ->
             runCatching { context.assets.open(name).bufferedReader().use { it.readText() } }.getOrNull()?.let(::reflow)
         }
     }

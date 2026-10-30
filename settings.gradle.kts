@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "rex-mobile"
+rootProject.name = "chompy"
 include(":app", ":terminal", ":baselineprofile")

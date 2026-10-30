@@ -1,0 +1,78 @@
+The logos and glyphs in Chompy's tabs come from the sets and projects below. manifest.json says
+which one each glyph is from, and sources/<name>/SOURCE.md where each project's logo was taken. Each
+logo belongs to its owner and is used only to show which program a tab runs.
+
+Simple Icons (https://simpleicons.org) and Iconify's logos (https://icon-sets.iconify.design/logos/)
+are CC0 1.0, a public domain dedication. Kakoune's logo is under the Unlicense, also public domain.
+Jujutsu's logo is Copyright 2025 J. Jennings, SVG by Lucas Garron, under CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/).
+
+The others' notices follow.
+
+---
+
+Lobe Icons (https://github.com/lobehub/lobe-icons)
+
+MIT License
+
+Copyright (c) 2023 LobeHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Lucide (https://lucide.dev)
+
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+Some of Lucide's icons are derived from Feather, under the MIT License:
+Copyright (c) 2013-present Cole Bemis. Its terms are the MIT License's, as above for Lobe Icons.
+
+---
+
+Logos from the projects' own repositories, each under the project's license:
+
+llama.cpp: MIT License, Copyright (c) 2023-2026 The ggml authors
+Yazi: MIT License, Copyright (c) 2023 - sxyazi
+Hunk: MIT License, Copyright (c) Modem Labs Inc.
+proto: MIT License, Copyright (c) 2021 moonrepo, Inc.
+Homey CLI: ISC License, Copyright (c) Athom B.V.
+btop++: Apache License 2.0
+K9s: Apache License 2.0
+D2: Mozilla Public License 2.0. The logo's source is in D2's repository,
+https://github.com/terrastruct/d2/blob/master/docs/assets/logo.svg
+
+The MIT License's terms are as above for Lobe Icons, and the ISC License's as above for Lucide, each
+with that project's copyright line. The Apache License 2.0 is at
+https://www.apache.org/licenses/LICENSE-2.0 and the Mozilla Public License 2.0 at
+https://mozilla.org/MPL/2.0/.
