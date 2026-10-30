@@ -1,5 +1,6 @@
 package com.jeffarese.rexmobile.terminal.emulator;
 
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -10,16 +11,20 @@ import java.util.Map;
  * -1 being the newest. {@link #externalToInternalRow(int)} leaves a row number as it is, for the code
  * written against Termux's circular buffer.
  * <p>
- * Screen rows are read again after each change. History rows only change when the terminal is
- * resized, reset or cleared, so they are kept, by their position counted from the first row the
- * terminal ever had, until one of those happens.
+ * After a change, the screen rows libghostty-vt marks as changed are read again, the next time any
+ * is wanted. History rows only change when the terminal is resized, reset or cleared, so the last
+ * few screens of them read are kept, by their position counted from the first row the terminal
+ * ever had, until one of those happens.
  */
 public final class TerminalBuffer {
 
-    /** Rows read in one go: a screenful or so, for the renderer and selection read rows near each other. */
+    /** History rows read in one go: a screenful or so, for the renderer and selection read rows near each other. */
     private static final int READ_AHEAD = 64;
-    /** History rows kept read, such as for scrolling back and forth over a long conversation. */
-    private static final int HISTORY_KEPT = 4096;
+    /**
+     * History rows kept read, for scrolling back and forth over a few screens. A row of 150 columns
+     * takes over 2 KB of the Java heap, and the terminal keeps every row compressed besides.
+     */
+    static final int HISTORY_KEPT = 512;
 
     private final TerminalEmulator mEmulator;
     /** The number of rows and columns visible on the screen. */
@@ -27,13 +32,27 @@ public final class TerminalBuffer {
     private final int mMaxTranscriptRows;
 
     private TerminalRow[] mScreen;
-    private boolean[] mScreenRead;
+    /** Output changed the screen since it was last read. */
+    private boolean mScreenChanged = true;
+    /** Some screen row has never been read, so the next read reads them all rather than the changed ones. */
+    private boolean mScreenPartial = true;
     private final LinkedHashMap<Long, TerminalRow> mHistory = new LinkedHashMap<Long, TerminalRow>(256, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<Long, TerminalRow> eldest) {
-            return size() > HISTORY_KEPT;
+            if (size() <= HISTORY_KEPT) return false;
+            mSpareRow = eldest.getValue();
+            return true;
         }
     };
+    /** The last history row let go, to be filled with the next one read rather than make another. */
+    private TerminalRow mSpareRow;
+
+    // What reads fill, kept from one to the next and only ever grown, so reading a frame makes no garbage.
+    private char[] mText;
+    private int[] mStarts;
+    private long[] mStyles;
+    private boolean[] mWraps;
+    private int[] mRowsRead;
     /** Rows that have moved into history since the terminal began, which makes a history row's key. */
     private long mScrolledTotal;
     private int mTranscriptRows = -1;
@@ -49,8 +68,10 @@ public final class TerminalBuffer {
         mColumns = columns;
         mScreenRows = screenRows;
         mScreen = new TerminalRow[screenRows];
-        mScreenRead = new boolean[screenRows];
+        mScreenChanged = true;
+        mScreenPartial = true;
         mHistory.clear();
+        mSpareRow = null;
         mTranscriptRows = -1;
     }
 
@@ -59,7 +80,7 @@ public final class TerminalBuffer {
      * told: history rows read so far keep their place only when output just added rows.
      */
     void changed(int scrolled) {
-        java.util.Arrays.fill(mScreenRead, false);
+        mScreenChanged = true;
         int before = mTranscriptRows;
         mTranscriptRows = -1;
         if (scrolled < 0) {
@@ -73,9 +94,32 @@ public final class TerminalBuffer {
 
     /** Forget every row read, as after a reset. */
     void forget() {
-        java.util.Arrays.fill(mScreenRead, false);
+        mScreenChanged = true;
+        mScreenPartial = true;
         mHistory.clear();
         mTranscriptRows = -1;
+    }
+
+    /**
+     * Let go of every row read and what reads fill, for a terminal nothing shows or when memory runs
+     * short. Rows are read again when wanted.
+     */
+    public void dropRows() {
+        Arrays.fill(mScreen, null);
+        mScreenChanged = true;
+        mScreenPartial = true;
+        mHistory.clear();
+        mSpareRow = null;
+        mText = null;
+        mStarts = null;
+        mStyles = null;
+        mWraps = null;
+        mRowsRead = null;
+    }
+
+    /** History rows kept read, for tests. */
+    int historyRowsKept() {
+        return mHistory.size();
     }
 
     public String getTranscriptText() {
@@ -217,51 +261,70 @@ public final class TerminalBuffer {
     /** The row numbered {@code row}, read from the terminal if it hasn't been since it last changed. */
     public TerminalRow allocateFullLineIfNecessary(int row) {
         if (row >= 0 && row < mScreenRows) {
-            if (!mScreenRead[row]) read(row);
+            if (mScreenChanged) readScreen();
             // Not to be read, as from a released terminal: blank.
             if (mScreen[row] == null) mScreen[row] = new TerminalRow(mColumns, TextStyle.NORMAL);
             return mScreen[row];
         }
         TerminalRow kept = mHistory.get(mScrolledTotal + row);
         if (kept != null) return kept;
-        read(row);
+        readHistory(row);
         kept = mHistory.get(mScrolledTotal + row);
         // A row outside the terminal reads as blank and isn't kept.
         return kept != null ? kept : new TerminalRow(mColumns, TextStyle.NORMAL);
     }
 
-    /** Read the rows around {@code row} that aren't read yet: the rest of the screen for a screen row, a stretch of history for a history row. */
-    private void read(int row) {
+    /** Read the screen rows that changed since they were last read, or all of them if some never were. */
+    private void readScreen() {
+        reserve(mScreenRows);
+        int read;
+        while ((read = mEmulator.readScreen(mScreenPartial, mRowsRead, mText, mStarts, mStyles, mWraps)) < 0) {
+            mText = new char[-read + mColumns];
+        }
+        mScreenChanged = false;
+        mScreenPartial = false;
+        for (int i = 0; i < read; i++) {
+            final int r = mRowsRead[i];
+            if (r >= mScreenRows) continue;
+            if (mScreen[r] == null) mScreen[r] = new TerminalRow(mColumns, TextStyle.NORMAL);
+            mScreen[r].fill(mText, mStarts, mStyles, mWraps, i);
+        }
+    }
+
+    /** Read a stretch of history around {@code row}. */
+    private void readHistory(int row) {
         final int history = getActiveTranscriptRows();
-        int first, last;
-        if (row >= 0) {
-            first = row;
-            last = Math.min(mScreenRows - 1, row + READ_AHEAD - 1);
-            while (last > first && mScreenRead[last]) last--;
-        } else {
-            first = Math.max(-history, row - READ_AHEAD / 2);
-            last = Math.min(-1, row + READ_AHEAD / 2);
-            if (first > last) return;
-        }
+        final int first = Math.max(-history, row - READ_AHEAD / 2);
+        final int last = Math.min(-1, row + READ_AHEAD / 2);
+        if (first > last) return;
         final int count = last - first + 1;
-        final int[] starts = new int[count * (mColumns + 1)];
-        final long[] styles = new long[count * mColumns];
-        final boolean[] wraps = new boolean[count];
-        final char[] text = mEmulator.readRows(first, count, starts, styles, wraps);
-        if (text == null) return;
-        for (int i = 0; i < count; i++) {
-            final int r = first + i;
-            if (r >= 0) {
-                if (mScreen[r] == null) mScreen[r] = new TerminalRow(mColumns, TextStyle.NORMAL);
-                mScreen[r].fill(text, starts, styles, wraps, i);
-                mScreenRead[r] = true;
-            } else {
-                final long key = mScrolledTotal + r;
-                TerminalRow line = mHistory.get(key);
-                if (line == null) line = new TerminalRow(mColumns, TextStyle.NORMAL);
-                line.fill(text, starts, styles, wraps, i);
-                mHistory.put(key, line);
-            }
+        reserve(count);
+        int length;
+        while ((length = mEmulator.readRows(first, count, mText, mStarts, mStyles, mWraps)) < 0) {
+            mText = new char[-length + mColumns];
         }
+        if (length == 0) return;
+        for (int i = 0; i < count; i++) {
+            final long key = mScrolledTotal + first + i;
+            TerminalRow line = mHistory.get(key);
+            if (line == null) {
+                line = mSpareRow != null ? mSpareRow : new TerminalRow(mColumns, TextStyle.NORMAL);
+                mSpareRow = null;
+            }
+            line.fill(mText, mStarts, mStyles, mWraps, i);
+            mHistory.put(key, line);
+        }
+    }
+
+    /** Room in what reads fill for {@code count} rows. */
+    private void reserve(int count) {
+        if (mWraps == null || mWraps.length < count || mStarts.length < count * (mColumns + 1)) {
+            final int rows = Math.max(count, Math.max(mScreenRows, READ_AHEAD + 1));
+            mStarts = new int[rows * (mColumns + 1)];
+            mStyles = new long[rows * mColumns];
+            mWraps = new boolean[rows];
+            mRowsRead = new int[rows];
+        }
+        if (mText == null) mText = new char[count * mColumns];
     }
 }

@@ -184,9 +184,14 @@ public final class TerminalEmulator {
         mScrollCounter += mRows;
     }
 
-    /** A screen row, or a negative history row, read for {@link TerminalBuffer}. */
-    char[] readRows(int first, int count, int[] starts, long[] styles, boolean[] wraps) {
-        return Ghostty.readRows(mHandle, first, count, starts, styles, wraps);
+    /** Rows read for {@link TerminalBuffer}: see {@link Ghostty#readRows}. */
+    int readRows(int first, int count, char[] text, int[] starts, long[] styles, boolean[] wraps) {
+        return Ghostty.readRows(mHandle, first, count, text, starts, styles, wraps);
+    }
+
+    /** The screen rows that changed, read for {@link TerminalBuffer}: see {@link Ghostty#readScreen}. */
+    int readScreen(boolean all, int[] rows, char[] text, int[] starts, long[] styles, boolean[] wraps) {
+        return Ghostty.readScreen(mHandle, all, rows, text, starts, styles, wraps);
     }
 
     long nativeLong(int key) {
@@ -205,7 +210,10 @@ public final class TerminalEmulator {
         return (int) Ghostty.getLong(mHandle, Ghostty.CURSOR_X);
     }
 
-    /** Get the terminal cursor style: the program's choice, or the app's when the program made none. */
+    /**
+     * Get the terminal cursor style: the program's choice, or the app's when the program made none. Asked every frame,
+     * and only looked up again after output.
+     */
     public int getCursorStyle() {
         switch ((int) Ghostty.getLong(mHandle, Ghostty.CURSOR_STYLE)) {
             case 0:

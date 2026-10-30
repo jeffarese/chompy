@@ -101,8 +101,18 @@ final class Ghostty {
     /** See rexterm.c: the bytes a press of {@code key} ({@link Keys}) sends with {@code mods} held, null for none. */
     static native byte[] encodeKey(long terminal, int key, int mods, int consumedMods, int text, int unshifted);
 
-    /** See rexterm.c: the text of rows [first, first + count), with each column's start and style, and each row's wrap. */
-    static native char[] readRows(long terminal, int first, int count, int[] starts, long[] styles, boolean[] wraps);
+    /**
+     * See rexterm.c: the text of rows [first, first + count), with each column's start and style, and each row's wrap.
+     * Returns the text's length, minus that if {@code text} hasn't room for it, or 0 if nothing could be read.
+     */
+    static native int readRows(long terminal, int first, int count, char[] text, int[] starts, long[] styles, boolean[] wraps);
+
+    /**
+     * See rexterm.c: the screen rows changed since the last call, or {@code all} of them, as {@link #readRows} reads
+     * rows, with each one's number in {@code rows}. Returns how many, or minus the text's length if {@code text}
+     * hasn't room for it, in which case they are still unread.
+     */
+    static native int readScreen(long terminal, boolean all, int[] rows, char[] text, int[] starts, long[] styles, boolean[] wraps);
 
     static native long decoderNew();
 

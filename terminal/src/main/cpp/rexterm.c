@@ -7,6 +7,7 @@
 // Every call happens on the thread that owns the terminal (the main thread in the app).
 
 #include <jni.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -35,11 +36,36 @@ enum {
 };
 
 typedef struct {
+    jchar* chars;
+    size_t len, cap;
+} Chars;
+
+// What a read of rows fills before handing it to Java. Kept from one read to the next, and only
+// ever grown, so reading a frame allocates nothing.
+typedef struct {
+    Chars text;
+    jint* starts;
+    jlong* styles;
+    jboolean* wraps;
+    jint* rows;
+    size_t rows_cap, cols_cap;  // the rows, of up to so many columns, they have room for
+} Rows;
+
+typedef struct {
     GhosttyTerminal terminal;
     // The row at the top of the active screen when output was last written, to count the rows
     // that output moved into scrollback.
     GhosttyTrackedGridRef anchor;
+    // The screen as Ghostty's renderers see it, which copies only the rows that changed since it
+    // was last brought up to date: done once after output, however often the screen and the
+    // cursor are read meanwhile.
     GhosttyRenderState render;
+    GhosttyRenderStateRowIterator render_rows;
+    GhosttyRenderStateRowCells render_cells;
+    int changed;  // output, a resize or a reset since the render state was brought up to date
+    // Screen rows to read from the pages as well as those the render state says changed: see write.
+    long recheck_top, recheck_bottom;
+    Rows read;
     int events;
     // Made on the first key pressed.
     GhosttyKeyEncoder keys;
@@ -86,7 +112,12 @@ static Term* wrap(GhosttyTerminal t, jint scrollback) {
     ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, (const void*)on_title);
     // No WRITE_PTY: the server's own terminal has answered every query in the output already.
     set_scrollback(t, (size_t)scrollback);
-    ghostty_render_state_new(NULL, &term->render);
+    if (ghostty_render_state_new(NULL, &term->render) != GHOSTTY_SUCCESS) term->render = NULL;
+    if (ghostty_render_state_row_iterator_new(NULL, &term->render_rows) != GHOSTTY_SUCCESS) term->render_rows = NULL;
+    if (ghostty_render_state_row_cells_new(NULL, &term->render_cells) != GHOSTTY_SUCCESS) term->render_cells = NULL;
+    term->changed = 1;
+    term->recheck_top = LONG_MAX;
+    term->recheck_bottom = -1;
     anchor_at_top(term);
     return term;
 }
@@ -108,7 +139,14 @@ JNIEXPORT void JNICALL JNI(free)(JNIEnv* env, jclass c, jlong h) {
     if (!h) return;
     Term* term = TERM(h);
     if (term->anchor) ghostty_tracked_grid_ref_free(term->anchor);
+    if (term->render_cells) ghostty_render_state_row_cells_free(term->render_cells);
+    if (term->render_rows) ghostty_render_state_row_iterator_free(term->render_rows);
     if (term->render) ghostty_render_state_free(term->render);
+    free(term->read.text.chars);
+    free(term->read.starts);
+    free(term->read.styles);
+    free(term->read.wraps);
+    free(term->read.rows);
     if (term->key) ghostty_key_event_free(term->key);
     if (term->keys) ghostty_key_encoder_free(term->keys);
     ghostty_terminal_free(term->terminal);
@@ -184,10 +222,20 @@ JNIEXPORT jbyteArray JNICALL JNI(encodeKey)(
 
 JNIEXPORT void JNICALL JNI(write)(JNIEnv* env, jclass c, jlong h, jbyteArray data, jint offset, jint length) {
     if (!h) return;
+    Term* term = TERM(h);
+    // A code point that joins the character before it, such as a variation selector or a combining
+    // mark, changes the cell left of the cursor without Ghostty marking its row changed (unless
+    // mode 2027 is on). When output splits the two, the screen is read between them, so the row the
+    // cursor was on when this output came is read again from the pages.
+    uint16_t y = 0;
+    ghostty_terminal_get(term->terminal, GHOSTTY_TERMINAL_DATA_CURSOR_Y, &y);
+    if (y < term->recheck_top) term->recheck_top = y;
+    if (y > term->recheck_bottom) term->recheck_bottom = y;
     jbyte* bytes = (*env)->GetPrimitiveArrayCritical(env, data, NULL);
     if (!bytes) return;
-    ghostty_terminal_vt_write(TERM(h)->terminal, (const uint8_t*)bytes + offset, (size_t)length);
+    ghostty_terminal_vt_write(term->terminal, (const uint8_t*)bytes + offset, (size_t)length);
     (*env)->ReleasePrimitiveArrayCritical(env, data, bytes, JNI_ABORT);
+    term->changed = 1;
 }
 
 JNIEXPORT jint JNICALL JNI(takeEvents)(JNIEnv* env, jclass c, jlong h) {
@@ -219,6 +267,7 @@ JNIEXPORT void JNICALL JNI(resize)(JNIEnv* env, jclass c, jlong h, jint columns,
     if (!h) return;
     Term* term = TERM(h);
     ghostty_terminal_resize(term->terminal, (uint16_t)columns, (uint16_t)rows, 0, 0);
+    term->changed = 1;
     anchor_at_top(term);
 }
 
@@ -226,7 +275,23 @@ JNIEXPORT void JNICALL JNI(reset)(JNIEnv* env, jclass c, jlong h) {
     if (!h) return;
     Term* term = TERM(h);
     ghostty_terminal_reset(term->terminal);
+    term->changed = 1;
     anchor_at_top(term);
+}
+
+// Bring the render state up to date, if the terminal changed since it last was. Ghostty's renderers
+// own the screen's dirty flags, so the rows a frame copies are the ones output changed since the last.
+static int update_render(Term* term) {
+    if (!term->render) return 0;
+    if (!term->changed) return 1;
+    // The render state follows the viewport, which this app leaves on the active screen: the view
+    // scrolls through history itself.
+    bool active = true;
+    ghostty_terminal_get(term->terminal, GHOSTTY_TERMINAL_DATA_VIEWPORT_ACTIVE, &active);
+    if (!active) ghostty_terminal_scroll_viewport(term->terminal, (GhosttyTerminalScrollViewport){.tag = GHOSTTY_SCROLL_VIEWPORT_BOTTOM});
+    if (ghostty_render_state_update(term->render, term->terminal) != GHOSTTY_SUCCESS) return 0;
+    term->changed = 0;
+    return 1;
 }
 
 // Keys for getLong, as numbered in Ghostty.java.
@@ -277,7 +342,9 @@ JNIEXPORT jlong JNICALL JNI(getLong)(JNIEnv* env, jclass c, jlong h, jint key) {
         }
         case KEY_CURSOR_STYLE:
         case KEY_CURSOR_BLINKING: {
-            if (!term->render || ghostty_render_state_update(term->render, t) != GHOSTTY_SUCCESS) return 0;
+            // Only Ghostty's render state has them. Every frame asks, so it is brought up to date
+            // only after a change, and then the rows read next need no update of their own.
+            if (!update_render(term)) return 0;
             if (key == KEY_CURSOR_BLINKING) {
                 bool v = false;
                 ghostty_render_state_get(term->render, GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &v);
@@ -430,11 +497,6 @@ static int64_t with_background(int64_t style, int64_t bg, int truecolor) {
     return style | (bg << 16) | (truecolor ? STYLE_TRUECOLOR_BG : 0);
 }
 
-typedef struct {
-    jchar* chars;
-    size_t len, cap;
-} Chars;
-
 static int put(Chars* out, uint32_t cp) {
     if (out->len + 2 > out->cap) {
         size_t cap = out->cap ? out->cap * 2 : 4096;
@@ -453,109 +515,255 @@ static int put(Chars* out, uint32_t cp) {
     return 1;
 }
 
-// Read rows [first, first + count) into Termux's shapes: the text of every column in turn (a space
-// for an empty cell, nothing for the right half of a wide character), where each column's text
-// starts (count * (columns + 1) offsets, the last of each row being its end), each column's style,
-// and whether each row wraps onto the next. Rows outside the terminal come back blank.
-JNIEXPORT jcharArray JNICALL JNI(readRows)(
-    JNIEnv* env, jclass c, jlong h, jint first, jint count, jintArray starts, jlongArray styles, jbooleanArray wraps) {
-    if (!h) return NULL;
-    GhosttyTerminal t = TERM(h)->terminal;
+// Room in the buffers for count rows of cols columns, growing them if they haven't enough.
+static int reserve(Rows* out, size_t count, size_t cols) {
+    if (count <= out->rows_cap && cols <= out->cols_cap) return 1;
+    size_t rows_cap = count > out->rows_cap ? count : out->rows_cap;
+    size_t cols_cap = cols > out->cols_cap ? cols : out->cols_cap;
+    jint* starts = realloc(out->starts, sizeof(jint) * rows_cap * (cols_cap + 1));
+    if (!starts) return 0;
+    out->starts = starts;
+    jlong* styles = realloc(out->styles, sizeof(jlong) * rows_cap * cols_cap);
+    if (!styles) return 0;
+    out->styles = styles;
+    jboolean* wraps = realloc(out->wraps, sizeof(jboolean) * rows_cap);
+    if (!wraps) return 0;
+    out->wraps = wraps;
+    jint* rows = realloc(out->rows, sizeof(jint) * rows_cap);
+    if (!rows) return 0;
+    out->rows = rows;
+    out->rows_cap = rows_cap;
+    out->cols_cap = cols_cap;
+    return 1;
+}
+
+// The longest grapheme cluster read whole; a longer one shows its first code point.
+enum { MAX_GRAPHEME = 32 };
+
+static GhosttyCellContentTag content_tag(GhosttyCell cell) {
+    GhosttyCellContentTag tag = GHOSTTY_CELL_CONTENT_CODEPOINT;
+    ghostty_cell_get(cell, GHOSTTY_CELL_DATA_CONTENT_TAG, &tag);
+    return tag;
+}
+
+// A cell in Termux's shapes, after the cells before it in its row: its style in *st, from s or
+// left as it is if s is null, and its text, a space for an empty cell and nothing for the right
+// half of a wide character. The n code points in grapheme are its text when it is a cluster.
+static int put_cell(Chars* out, GhosttyCell cell, GhosttyCellContentTag tag, const GhosttyStyle* s,
+                    const uint32_t* grapheme, size_t n, jlong* st) {
+    GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+    ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
+    if (s) *st = encode_style(s);
+    if (tag == GHOSTTY_CELL_CONTENT_BG_COLOR_PALETTE) {
+        uint8_t index = 0;
+        ghostty_cell_get(cell, GHOSTTY_CELL_DATA_COLOR_PALETTE, &index);
+        *st = with_background(*st, index, 0);
+    } else if (tag == GHOSTTY_CELL_CONTENT_BG_COLOR_RGB) {
+        GhosttyColorRgb rgb = {0};
+        ghostty_cell_get(cell, GHOSTTY_CELL_DATA_COLOR_RGB, &rgb);
+        *st = with_background(*st, ((int64_t)rgb.r << 16) | ((int64_t)rgb.g << 8) | rgb.b, 1);
+    }
+    // The right half of a wide character has no text of its own.
+    if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL) return 1;
+    uint32_t cp = 0;
+    ghostty_cell_get(cell, GHOSTTY_CELL_DATA_CODEPOINT, &cp);
+    if (cp == 0 || wide == GHOSTTY_CELL_WIDE_SPACER_HEAD) return put(out, ' ');
+    if (tag != GHOSTTY_CELL_CONTENT_CODEPOINT_GRAPHEME || n == 0) return put(out, cp);
+    for (size_t i = 0; i < n; i++) {
+        if (!put(out, grapheme[i])) return 0;
+    }
+    return 1;
+}
+
+// Row `row` of the terminal's pages, numbered as Ghostty.java numbers rows, into the buffers as
+// their row i. A row outside the terminal comes back blank.
+static int put_row(GhosttyTerminal t, Rows* out, size_t i, long row, long history, uint16_t rows, uint16_t cols) {
+    jint* rs = out->starts + i * (cols + 1);
+    jlong* st = out->styles + i * cols;
+    const int64_t blank = encode_style(&(GhosttyStyle){.size = sizeof(GhosttyStyle)});
+    uint32_t grapheme[MAX_GRAPHEME];
+    int inside = row >= -history && row < rows;
+    out->wraps[i] = JNI_FALSE;
+    // Found once a row, a screen row from the top of the screen and a history row by walking the
+    // history from its top. The row's cells are in the same page, so each is the row's reference
+    // at its column.
+    GhosttyGridRef first_cell = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    if (inside) {
+        GhosttyPoint pt = row >= 0
+            ? (GhosttyPoint){.tag = GHOSTTY_POINT_TAG_ACTIVE, .value = {.coordinate = {.x = 0, .y = (uint32_t)row}}}
+            : (GhosttyPoint){.tag = GHOSTTY_POINT_TAG_SCREEN, .value = {.coordinate = {.x = 0, .y = (uint32_t)(history + row)}}};
+        if (ghostty_terminal_grid_ref(t, pt, &first_cell) == GHOSTTY_SUCCESS) {
+            GhosttyRow gr;
+            bool w = false;
+            if (ghostty_grid_ref_row(&first_cell, &gr) == GHOSTTY_SUCCESS) ghostty_row_get(gr, GHOSTTY_ROW_DATA_WRAP, &w);
+            out->wraps[i] = w;
+        } else {
+            inside = 0;
+        }
+    }
+    for (uint16_t x = 0; x < cols; x++) {
+        rs[x] = (jint)out->text.len;
+        st[x] = blank;
+        GhosttyGridRef ref = first_cell;
+        ref.x = (uint16_t)(first_cell.x + x);
+        GhosttyCell cell;
+        if (!inside || ghostty_grid_ref_cell(&ref, &cell) != GHOSTTY_SUCCESS) {
+            if (!put(&out->text, ' ')) return 0;
+            continue;
+        }
+        GhosttyStyle s = GHOSTTY_INIT_SIZED(GhosttyStyle);
+        int styled = ghostty_grid_ref_style(&ref, &s) == GHOSTTY_SUCCESS;
+        GhosttyCellContentTag tag = content_tag(cell);
+        size_t n = 0;
+        if (tag == GHOSTTY_CELL_CONTENT_CODEPOINT_GRAPHEME &&
+            ghostty_grid_ref_graphemes(&ref, grapheme, MAX_GRAPHEME, &n) != GHOSTTY_SUCCESS) n = 0;
+        if (!put_cell(&out->text, cell, tag, styled ? &s : NULL, grapheme, n, &st[x])) return 0;
+    }
+    rs[cols] = (jint)out->text.len;
+    return 1;
+}
+
+// Hand Java what a read put in the buffers: count rows of cols columns. Returns the text's length,
+// or minus that if text hasn't room for it, which copies nothing.
+static jint hand_over(JNIEnv* env, const Rows* in, size_t count, uint16_t cols,
+                      jcharArray text, jintArray starts, jlongArray styles, jbooleanArray wraps) {
+    jsize len = (jsize)in->text.len;
+    if ((*env)->GetArrayLength(env, text) < len) return -len;
+    (*env)->SetCharArrayRegion(env, text, 0, len, in->text.chars);
+    (*env)->SetIntArrayRegion(env, starts, 0, (jsize)(count * (cols + 1)), in->starts);
+    (*env)->SetLongArrayRegion(env, styles, 0, (jsize)(count * cols), in->styles);
+    (*env)->SetBooleanArrayRegion(env, wraps, 0, (jsize)count, in->wraps);
+    return len;
+}
+
+// Read rows [first, first + count) into Termux's shapes, in text and the arrays given: the text of
+// every column in turn (a space for an empty cell, nothing for the right half of a wide character),
+// where each column's text starts (count * (columns + 1) offsets, the last of each row being its
+// end), each column's style, and whether each row wraps onto the next. Rows outside the terminal
+// come back blank. Returns the text's length, minus that if text hasn't room for it, or 0 if
+// nothing could be read.
+//
+// This is for history, which only changes as a whole: readScreen reads the screen, a changed row
+// at a time.
+JNIEXPORT jint JNICALL JNI(readRows)(
+    JNIEnv* env, jclass c, jlong h, jint first, jint count, jcharArray text, jintArray starts, jlongArray styles,
+    jbooleanArray wraps) {
+    if (!h || count <= 0) return 0;
+    Term* term = TERM(h);
+    GhosttyTerminal t = term->terminal;
     uint16_t cols = 0, rows = 0;
     ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_COLS, &cols);
     ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ROWS, &rows);
     long history = (long)scrollback_rows(t);
 
-    jint* start = malloc(sizeof(jint) * (size_t)count * (cols + 1));
-    jlong* style = malloc(sizeof(jlong) * (size_t)count * cols);
-    jboolean* wrap = calloc((size_t)count, sizeof(jboolean));
-    Chars out = {0};
-    uint32_t grapheme[32];
+    Rows* out = &term->read;
+    if (!reserve(out, (size_t)count, cols)) return 0;
+    out->text.len = 0;
+    for (jint r = 0; r < count; r++) {
+        if (!put_row(t, out, (size_t)r, (long)first + r, history, rows, cols)) return 0;
+    }
+    return hand_over(env, out, (size_t)count, cols, text, starts, styles, wraps);
+}
+
+// The row the render state's iterator is on, into the buffers as their row i.
+static int put_render_row(Term* term, size_t i, uint16_t cols) {
+    Rows* out = &term->read;
+    jint* rs = out->starts + i * (cols + 1);
+    jlong* st = out->styles + i * cols;
     const int64_t blank = encode_style(&(GhosttyStyle){.size = sizeof(GhosttyStyle)});
-    int ok = start && style && wrap;
-
-    for (jint r = 0; ok && r < count; r++) {
-        long y = history + first + r;
-        int inside = y >= 0 && y < history + rows;
-        jint* rs = start + (size_t)r * (cols + 1);
-        jlong* st = style + (size_t)r * cols;
-        // Found once a row: a screen point is found by walking the history from its top. The row's
-        // cells are in the same page, so each is the row's reference at its column.
-        GhosttyGridRef first_cell = GHOSTTY_INIT_SIZED(GhosttyGridRef);
-        if (inside) {
-            GhosttyPoint pt = {.tag = GHOSTTY_POINT_TAG_SCREEN, .value = {.coordinate = {.x = 0, .y = (uint32_t)y}}};
-            if (ghostty_terminal_grid_ref(t, pt, &first_cell) == GHOSTTY_SUCCESS) {
-                GhosttyRow row;
-                bool w = false;
-                if (ghostty_grid_ref_row(&first_cell, &row) == GHOSTTY_SUCCESS) ghostty_row_get(row, GHOSTTY_ROW_DATA_WRAP, &w);
-                wrap[r] = w;
-            } else {
-                inside = 0;
-            }
+    GhosttyRow raw;
+    bool w = false;
+    if (ghostty_render_state_row_get(term->render_rows, GHOSTTY_RENDER_STATE_ROW_DATA_RAW, &raw) == GHOSTTY_SUCCESS)
+        ghostty_row_get(raw, GHOSTTY_ROW_DATA_WRAP, &w);
+    out->wraps[i] = w;
+    GhosttyRenderStateRowCells cells = term->render_cells;
+    int have = ghostty_render_state_row_get(term->render_rows, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &cells) == GHOSTTY_SUCCESS;
+    uint32_t grapheme[MAX_GRAPHEME];
+    for (uint16_t x = 0; x < cols; x++) {
+        rs[x] = (jint)out->text.len;
+        st[x] = blank;
+        GhosttyCell cell;
+        if (!have || !ghostty_render_state_row_cells_next(cells) ||
+            ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &cell) != GHOSTTY_SUCCESS) {
+            if (!put(&out->text, ' ')) return 0;
+            continue;
         }
-        for (uint16_t x = 0; ok && x < cols; x++) {
-            rs[x] = (jint)out.len;
-            st[x] = blank;
-            if (!inside) {
-                ok = put(&out, ' ');
-                continue;
-            }
-            GhosttyGridRef ref = first_cell;
-            ref.x = (uint16_t)(first_cell.x + x);
-            GhosttyCell cell;
-            if (ghostty_grid_ref_cell(&ref, &cell) != GHOSTTY_SUCCESS) {
-                ok = put(&out, ' ');
-                continue;
-            }
-            GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
-            ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
-            GhosttyStyle s = GHOSTTY_INIT_SIZED(GhosttyStyle);
-            if (ghostty_grid_ref_style(&ref, &s) == GHOSTTY_SUCCESS) st[x] = encode_style(&s);
-            GhosttyCellContentTag tag = GHOSTTY_CELL_CONTENT_CODEPOINT;
-            ghostty_cell_get(cell, GHOSTTY_CELL_DATA_CONTENT_TAG, &tag);
-            if (tag == GHOSTTY_CELL_CONTENT_BG_COLOR_PALETTE) {
-                uint8_t index = 0;
-                ghostty_cell_get(cell, GHOSTTY_CELL_DATA_COLOR_PALETTE, &index);
-                st[x] = with_background(st[x], index, 0);
-            } else if (tag == GHOSTTY_CELL_CONTENT_BG_COLOR_RGB) {
-                GhosttyColorRgb rgb = {0};
-                ghostty_cell_get(cell, GHOSTTY_CELL_DATA_COLOR_RGB, &rgb);
-                st[x] = with_background(st[x], ((int64_t)rgb.r << 16) | ((int64_t)rgb.g << 8) | rgb.b, 1);
-            }
-            // The right half of a wide character has no text of its own.
-            if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL) continue;
-            uint32_t cp = 0;
-            ghostty_cell_get(cell, GHOSTTY_CELL_DATA_CODEPOINT, &cp);
-            if (cp == 0 || wide == GHOSTTY_CELL_WIDE_SPACER_HEAD) {
-                ok = put(&out, ' ');
-                continue;
-            }
-            size_t n = 0;
-            if (tag == GHOSTTY_CELL_CONTENT_CODEPOINT_GRAPHEME &&
-                ghostty_grid_ref_graphemes(&ref, grapheme, 32, &n) == GHOSTTY_SUCCESS && n > 0) {
-                for (size_t i = 0; ok && i < n; i++) ok = put(&out, grapheme[i]);
-            } else {
-                ok = put(&out, cp);
-            }
+        // A cell without a style of its own keeps the blank one.
+        bool has_style = false;
+        ghostty_cell_get(cell, GHOSTTY_CELL_DATA_HAS_STYLING, &has_style);
+        GhosttyStyle s = GHOSTTY_INIT_SIZED(GhosttyStyle);
+        int styled = has_style && ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &s) == GHOSTTY_SUCCESS;
+        GhosttyCellContentTag tag = content_tag(cell);
+        uint32_t n = 0;
+        if (tag == GHOSTTY_CELL_CONTENT_CODEPOINT_GRAPHEME) {
+            ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &n);
+            if (n > MAX_GRAPHEME ||
+                ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, grapheme) != GHOSTTY_SUCCESS) n = 0;
         }
-        rs[cols] = (jint)out.len;
+        if (!put_cell(&out->text, cell, tag, styled ? &s : NULL, grapheme, n, &st[x])) return 0;
     }
+    rs[cols] = (jint)out->text.len;
+    return 1;
+}
 
-    jcharArray text = NULL;
-    if (ok) {
-        text = (*env)->NewCharArray(env, (jsize)out.len);
-        if (text) {
-            (*env)->SetCharArrayRegion(env, text, 0, (jsize)out.len, out.chars);
-            (*env)->SetIntArrayRegion(env, starts, 0, count * (cols + 1), start);
-            (*env)->SetLongArrayRegion(env, styles, 0, count * cols, style);
-            (*env)->SetBooleanArrayRegion(env, wraps, 0, count, wrap);
+static int has_row(const Rows* in, size_t count, jint y) {
+    for (size_t i = 0; i < count; i++) {
+        if (in->rows[i] == y) return 1;
+    }
+    return 0;
+}
+
+// Read the screen rows that changed since the last read, or all of them, as readRows reads rows,
+// with each one's number in rows. Ghostty marks the rows output changes, so a spinner turning
+// reads its own row rather than the screen. Returns how many rows were read, or minus the text's
+// length if text hasn't room for it, in which case they are still unread for the next call.
+JNIEXPORT jint JNICALL JNI(readScreen)(
+    JNIEnv* env, jclass c, jlong h, jboolean all, jintArray rows, jcharArray text, jintArray starts, jlongArray styles,
+    jbooleanArray wraps) {
+    if (!h) return 0;
+    Term* term = TERM(h);
+    GhosttyTerminal t = term->terminal;
+    // Without a render state, as when making one failed, every row is read from the pages each time.
+    GhosttyRenderState render = term->render_rows && term->render_cells && update_render(term) ? term->render : NULL;
+    uint16_t cols = 0, height = 0;
+    ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_COLS, &cols);
+    ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ROWS, &height);
+    GhosttyRenderStateDirty dirty = GHOSTTY_RENDER_STATE_DIRTY_FULL;
+    if (render) ghostty_render_state_get(render, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirty);
+    int recheck = term->recheck_top <= term->recheck_bottom;
+    if (render && !all && !recheck && dirty == GHOSTTY_RENDER_STATE_DIRTY_FALSE) return 0;
+
+    Rows* out = &term->read;
+    if (!reserve(out, height, cols)) return 0;
+    out->text.len = 0;
+    size_t count = 0;
+    if (all || !render) {
+        // From the pages: a row the render state wasn't told had changed may be out of date in it.
+        for (uint16_t y = 0; y < height; y++) {
+            if (!put_row(t, out, count, y, 0, height, cols)) return 0;
+            out->rows[count++] = y;
+        }
+    } else {
+        GhosttyRenderStateRowIterator it = term->render_rows;
+        if (ghostty_render_state_get(render, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &it) != GHOSTTY_SUCCESS) return 0;
+        uint16_t y = 0;
+        while (ghostty_render_state_row_iterator_next_dirty(it, &y)) {
+            if (count == height || !put_render_row(term, count, cols)) return 0;
+            out->rows[count++] = y;
+        }
+        for (long r = term->recheck_top; recheck && r <= term->recheck_bottom && r < height; r++) {
+            if (has_row(out, count, (jint)r)) continue;
+            if (!put_row(t, out, count, r, 0, height, cols)) return 0;
+            out->rows[count++] = (jint)r;
         }
     }
-    free(out.chars);
-    free(start);
-    free(style);
-    free(wrap);
-    return text;
+    jint len = hand_over(env, out, count, cols, text, starts, styles, wraps);
+    if (len < 0) return len;
+    (*env)->SetIntArrayRegion(env, rows, 0, (jsize)count, out->rows);
+    if (render) ghostty_render_state_clean(render);
+    term->recheck_top = LONG_MAX;
+    term->recheck_bottom = -1;
+    return (jint)count;
 }
 
 // --- Snapshots ---------------------------------------------------------------------------------
