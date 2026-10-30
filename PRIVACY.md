@@ -16,8 +16,8 @@ ads or crash reporting of its own. Its developer receives nothing from the app.
   version, how long a scan took, and an identifier for the installation that isn't meant to identify
   you or the phone. Google describes this in [ML Kit's data disclosure](https://developers.google.com/ml-kit/android-data-disclosure).
   You can type an address instead and never open the scanner.
-- **GitHub, in the version from GitHub only.** That version checks Chompy's releases on GitHub now and
-  then, and downloads an update from there when you install it. GitHub sees the request as it sees any
+- **GitHub, in the version from GitHub only.** That version checks Chompy's releases on GitHub every
+  few hours, also while the app is closed, and downloads its updates from there. GitHub sees the request as it sees any
   visit, under [GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
   The version from Google Play makes no such checks: Play updates it.
 
@@ -39,7 +39,7 @@ uninstall Chompy.
 | Foreground service | To keep connected to your servers while the app is away, if you turn on Notify when away |
 | Run in the background (battery) | Asked for when you turn on Notify when away, so Android doesn't close that connection |
 | Vibrate | For alerts while the app is open |
-| Install apps (GitHub version only) | To install Chompy's own updates. The Google Play version doesn't have it |
+| Install apps, update without asking (GitHub version only) | To install Chompy's own updates, from Android 12 without asking each time. The Google Play version has neither |
 
 Chompy doesn't use the camera itself: Google's scanner does, for the moment it is open.
 

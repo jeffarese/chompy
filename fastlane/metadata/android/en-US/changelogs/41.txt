@@ -1,0 +1,1 @@
+Notify when away now comes back on its own after Chompy updates. Before, an update turned it off until you next opened the app.

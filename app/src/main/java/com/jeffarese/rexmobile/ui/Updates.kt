@@ -208,6 +208,7 @@ fun UpdateSheet(updater: Updater, onDismiss: () -> Unit) {
     var resumed by remember { mutableIntStateOf(0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { resumed++ }
     val canInstall = remember(resumed, state) { updater.canInstall() }
+    val byItself = remember(resumed, state) { updater.installsByItself }
     val pending = state as? UpdateState.WithRelease
     val release = pending?.release ?: justUpdated
     if (release == null) {
@@ -272,7 +273,11 @@ fun UpdateSheet(updater: Updater, onDismiss: () -> Unit) {
                         Text(if (canInstall) "Update now" else "Allow and update")
                     }
                     Spacer(Modifier.height(8.dp))
-                    Hint("Chompy closes to update and is back in a few seconds. Your sessions keep running on the Mac.")
+                    Hint(
+                        "Chompy closes to update and is back in a few seconds" +
+                            (if (byItself) ", or updates itself once you've been away a little while" else "") +
+                            ". Your sessions keep running on the Mac.",
+                    )
                 }
                 is UpdateState.Installing -> Progress("Installing… Android may ask you to confirm.", null)
             }

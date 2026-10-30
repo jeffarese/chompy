@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import androidx.core.content.ContextCompat
 import com.jeffarese.rexmobile.BuildConfig
+import com.jeffarese.rexmobile.UpdateJob
 import com.jeffarese.rexmobile.WatchService
 import com.jeffarese.rexmobile.ui.Palette
 import com.jeffarese.rexmobile.ui.Rex
@@ -19,6 +20,7 @@ import android.os.VibratorManager
 import android.os.Build
 import android.os.SystemClock
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CompletableDeferred
@@ -121,8 +123,8 @@ class AppModel(
 
     @Volatile private var foreground = false
     private var backgroundJob: Job? = null
-    /** When the app last went to the background, on the clock that keeps counting while the phone sleeps. Main thread only. */
-    private var leftAt: Long? = null
+    /** When the app last went to the background, on the clock that keeps counting while the phone sleeps. Set on the main thread. */
+    @Volatile private var leftAt: Long? = null
     /** The connections closed while the app was away. */
     @Volatile private var closedWhileAway = false
 
@@ -144,6 +146,7 @@ class AppModel(
             // Downloads need a read timeout, which the hosts' long-lived sockets go without.
             ReleaseFeed(repo, http.newBuilder().readTimeout(30, TimeUnit.SECONDS).pingInterval(0, TimeUnit.SECONDS).build())
         },
+        untilAway = ::untilAway,
     )
 
     /** Whether the phone is in dark mode, which [Appearance.SYSTEM] follows. */
@@ -202,6 +205,7 @@ class AppModel(
             })
         }
         networkWatch.start()
+        if (updater.enabled) UpdateJob.schedule(context)
         // At once, so the first frame is already in the theme's colors. No terminal is open yet. The theme is
         // one the app wore before, kept apart from the rest (see Themes), or its own look, which reads none.
         theme.value.let { t ->
@@ -232,6 +236,26 @@ class AppModel(
 
     private fun startWatching() {
         runCatching { ContextCompat.startForegroundService(context, Intent(context, WatchService::class.java)) }
+    }
+
+    /**
+     * Chompy was just replaced by a new version, which ended watching: Android doesn't start it again,
+     * and after an update made while the user was away, nobody opens the app to.
+     */
+    fun onReplaced() {
+        if (settings.watchInBackground.value) startWatching()
+    }
+
+    /**
+     * For the updater: how long until installing an update, which closes the app, costs the user nothing.
+     * Null while the app is on screen; after they leave, the time it keeps their place, at least a minute.
+     * The process lifecycle rather than [foreground], which is only told once the model is watching it.
+     */
+    private fun untilAway(): Long? {
+        if (ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return null
+        val left = leftAt ?: return 0
+        val keep = maxOf(settings.stayConnectedSeconds.value * 1000L, Updater.AWAY_BEFORE_INSTALL_MS)
+        return (keep - (SystemClock.elapsedRealtime() - left)).coerceAtLeast(0)
     }
 
     /** From [WatchService] once it runs, which after Android restarted it may be before the app opens. */
@@ -481,6 +505,7 @@ class AppModel(
     fun onBackground() {
         foreground = false
         leftAt = SystemClock.elapsedRealtime()
+        updater.onAway()
         backgroundJob?.cancel()
         // Keep connections a little while, so switching apps briefly costs nothing.
         backgroundJob = scope.launch {

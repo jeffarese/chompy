@@ -181,9 +181,12 @@ app uses it:
   and arrows can be rearranged in Settings, as can Claude's strip.
 - The system's own copy confirmation on Android 13 and later, and landscape layouts that keep clear
   of cutouts.
-- Installed from GitHub, the app updates itself from its releases there. A download installs only if
-  its SHA-256 matches, it is Chompy, it is newer, and it is signed with the same key. Installed from
-  Google Play, Play updates it, and the app has no updater of its own.
+- Installed from GitHub, the app updates itself from its releases there. Every few hours, closed or
+  not, it looks for a new version and downloads it on Wi-Fi; on Android 12 and later it installs it by
+  itself once you have been away from the app a minute or more, or as long as it keeps your place if
+  that is longer. A download installs only if its SHA-256 matches, it is Chompy, it is newer, and it
+  is signed with the same key. Installed from Google Play, Play updates it, and the app has no updater
+  of its own.
 
 Each program in a tab shows its own logo on its brand's colour, from [Simple Icons](https://simpleicons.org)
 (CC0), [Lobe Icons](https://github.com/lobehub/lobe-icons) (MIT) and [Iconify's logos](https://github.com/gilbarbara/logos)

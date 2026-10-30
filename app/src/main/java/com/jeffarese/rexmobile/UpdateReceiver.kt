@@ -21,7 +21,10 @@ class UpdateReceiver : BroadcastReceiver() {
                     IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java),
                 )
             }
-            Intent.ACTION_MY_PACKAGE_REPLACED -> Updater.onReplaced(context)
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                Updater.onReplaced(context)
+                (context.applicationContext as RexMobileApp).model.onReplaced()
+            }
         }
     }
 

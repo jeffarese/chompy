@@ -15,14 +15,17 @@ import androidx.core.content.pm.PackageInfoCompat
 import androidx.profileinstaller.DeviceProfileWriter
 import androidx.profileinstaller.ProfileInstaller
 import com.jeffarese.rexmobile.BuildConfig
+import com.jeffarese.rexmobile.UpdateJob
 import com.jeffarese.rexmobile.UpdateReceiver
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.zip.ZipEntry
@@ -49,11 +52,13 @@ sealed interface UpdateState {
 }
 
 /**
- * Keeps the app up to date from its releases on GitHub: checks now and then while the app is open,
- * downloads a new version by itself on Wi-Fi, and installs it when the user says so.
+ * Keeps the app up to date from its releases on GitHub: checks now and then, while the app is open and,
+ * through [UpdateJob], while it is closed, downloads a new version by itself on Wi-Fi, and installs it
+ * when the user says so or, once they have been away a while, by itself.
  *
- * Android asks the user once to let Chompy install apps, then to confirm the first update. From then
- * on Chompy installed itself, so on Android 12 and later its updates need no confirming.
+ * Android asks the user once to let Chompy install apps. From then on, on Android 12 and later, it
+ * installs Chompy's updates without asking, as Chompy declares UPDATE_PACKAGES_WITHOUT_USER_ACTION;
+ * before 12 it asks each time, so updates wait for the user there.
  */
 class Updater(
     private val context: Context,
@@ -67,6 +72,14 @@ class Updater(
     private val clock: () -> Long = System::currentTimeMillis,
     /** The dex metadata file to install beside an APK, or null to install it alone. */
     private val makeProfile: (File) -> ByteArray? = { dexMetadata(context, it, dir) },
+    /**
+     * How long until installing an update, which closes the app, costs the user nothing: null while the
+     * app is on screen, else what is left of the time it keeps their place after they leave, or 0. Always
+     * null leaves every update to the user.
+     */
+    private val untilAway: () -> Long? = { null },
+    /** Come back in so many milliseconds to install the update by itself, even if the app is closed by then. */
+    private val installLater: (Long) -> Unit = { UpdateJob.scheduleInstall(context, it) },
 ) {
     private val prefs = prefs(context)
 
@@ -93,6 +106,11 @@ class Updater(
     @Volatile private var confirm: Intent? = null
     /** Whether [session] carries the APK's profile. */
     @Volatile private var profiled = false
+    /** Whether [session] is an update Chompy started by itself, which waits for the user if Android asks them after all. */
+    @Volatile private var quietly = false
+
+    /** Whether Android installs an update without asking the user: from Android 12, once Chompy may install apps. */
+    val installsByItself: Boolean get() = enabled && Build.VERSION.SDK_INT >= 31 && canInstall()
 
     init {
         val saved = prefs.getString(RELEASE, null)?.let(Release::fromJson)
@@ -155,7 +173,7 @@ class Updater(
             }
             val have = (before as? UpdateState.Ready)?.takeIf { it.release.version == release.version && it.apk.exists() }
             when {
-                have != null -> _state.value = have
+                have != null -> if (quietNow(have)) install(have, quietly = true) else _state.value = have
                 manual || !metered() -> download(release)
                 else -> _state.value = UpdateState.Available(release)
             }
@@ -169,7 +187,7 @@ class Updater(
         if (now is UpdateState.Downloading || now is UpdateState.Installing) return
         _state.value = UpdateState.Downloading(release, 0f)
         scope.launch {
-            _state.value = try {
+            val done = try {
                 withContext(Dispatchers.IO) {
                     dir.mkdirs()
                     dir.listFiles()?.forEach { it.delete() }
@@ -189,6 +207,41 @@ class Updater(
             } catch (e: Exception) {
                 UpdateState.Available(release, e.message ?: "The download failed")
             }
+            if (done is UpdateState.Ready && quietNow(done)) install(done, quietly = true) else _state.value = done
+        }
+    }
+
+    /** The user left the app: install the update downloaded once they have been away long enough. */
+    fun onAway() = installQuietly()
+
+    private fun installQuietly() {
+        (_state.value as? UpdateState.Ready)?.let { if (quietNow(it)) install(it, quietly = true) }
+    }
+
+    /**
+     * Whether to install [ready] now without the user: Android lets Chompy, and the app has been left
+     * long enough that its closing costs them nothing. Left only just now, [installLater] comes back for
+     * it. A version the user put off, or whose last install failed, waits for them. Decided before the
+     * update shows as ready, so [updateQuietly] never sees it ready on its way to installing.
+     */
+    private fun quietNow(ready: UpdateState.Ready): Boolean {
+        val version = ready.release.version
+        if (ready.error != null || version == _snoozed.value || version == prefs.getString(ASKED, null) || !installsByItself) return false
+        val wait = untilAway() ?: return false
+        if (wait > 0) installLater(wait)
+        return wait <= 0
+    }
+
+    /**
+     * For [UpdateJob], while the app may be closed: install the update downloaded, or look for a new one
+     * and download it, which installs it. Returns once none of that is under way, or after [timeoutMs];
+     * an install that goes through closes the app before then.
+     */
+    suspend fun updateQuietly(timeoutMs: Long = JOB_MS) {
+        if (!enabled) return
+        if (_state.value is UpdateState.Ready) installQuietly() else check(manual = false)
+        withTimeoutOrNull(timeoutMs) {
+            _state.first { it !is UpdateState.Checking && it !is UpdateState.Downloading && it !is UpdateState.Installing }
         }
     }
 
@@ -203,11 +256,16 @@ class Updater(
 
     /** Hand the downloaded version to Android. Chompy closes when it is installed. */
     fun install() {
-        val ready = _state.value as? UpdateState.Ready ?: return
+        (_state.value as? UpdateState.Ready)?.let { install(it, quietly = false) }
+    }
+
+    /** [quietly]: by itself, while the user is away. */
+    private fun install(ready: UpdateState.Ready, quietly: Boolean) {
         session = null
         confirm = null
+        this.quietly = quietly
         _state.value = UpdateState.Installing(ready.release, ready.apk)
-        prefs.edit().putString(INSTALLING, ready.release.version).apply()
+        prefs.edit().putString(INSTALLING, ready.release.version).putBoolean(QUIETLY, quietly).apply()
         scope.launch(Dispatchers.IO) { startSession(ready.release, ready.apk, withProfile = true) }
     }
 
@@ -268,7 +326,14 @@ class Updater(
     fun onInstallStatus(status: Int, message: String?, confirmIntent: Intent?) {
         val installing = _state.value as? UpdateState.Installing ?: return
         when (status) {
-            PackageInstaller.STATUS_PENDING_USER_ACTION -> confirmIntent?.let {
+            // Android wants the user after all, such as where another app owns Chompy's updates. Not while
+            // they are away: the update waits for them, and doesn't go by itself again.
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> if (quietly) {
+                session?.let { runCatching { context.packageManager.packageInstaller.abandonSession(it) } }
+                session = null
+                prefs.edit().putString(ASKED, installing.release.version).remove(INSTALLING).apply()
+                _state.value = UpdateState.Ready(installing.release, installing.apk)
+            } else confirmIntent?.let {
                 confirm = it
                 showConfirm(it)
             }
@@ -310,9 +375,13 @@ class Updater(
     private fun fileFor(release: Release) = File(dir, "rex-${release.version}.apk")
 
     companion object {
-        /** How long between the checks made while the app is open. */
+        /** How long between the checks made while the app is open, and by [UpdateJob] while it is closed. */
         const val CHECK_EVERY_MS = 4 * 60 * 60 * 1000L
         const val SNOOZE_MS = 24 * 60 * 60 * 1000L
+        /** The least time the user is away before an update installs by itself, however briefly the app keeps their place. */
+        const val AWAY_BEFORE_INSTALL_MS = 60 * 1000L
+        /** How long [UpdateJob] waits for an update, inside the ten minutes Android gives a job. */
+        const val JOB_MS = 9 * 60 * 1000L
 
         private const val PREFS = "updates"
         private const val CHECKED_AT = "checked_at"
@@ -322,17 +391,25 @@ class Updater(
         private const val LAST_RUN = "last_run"
         /** The version handed to Android, so the new one knows it was installed from here. */
         private const val INSTALLING = "installing"
+        /** Whether [INSTALLING] went by itself, while the user was away. */
+        private const val QUIETLY = "quietly"
+        /** The version Android asked the user about when it went by itself: it waits for them. */
+        private const val ASKED = "asked"
         private const val SNOOZED = "snoozed"
         private const val SNOOZED_AT = "snoozed_at"
 
         private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        /** Chompy has just been replaced. If it replaced itself, say so, as the old one closed under the user. */
+        /**
+         * Chompy has just been replaced. If it replaced itself, say so: the old one closed under the user,
+         * or updated while they were away.
+         */
         fun onReplaced(context: Context) {
             val prefs = prefs(context)
             if (prefs.getString(INSTALLING, null) != BuildConfig.VERSION_NAME) return
-            prefs.edit().remove(INSTALLING).apply()
-            Notifier(context).updated(BuildConfig.VERSION_NAME)
+            val quietly = prefs.getBoolean(QUIETLY, false)
+            prefs.edit().remove(INSTALLING).remove(QUIETLY).apply()
+            Notifier(context).updated(BuildConfig.VERSION_NAME, quietly)
         }
 
         private fun installError(status: Int, message: String?) = when (status) {

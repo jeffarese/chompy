@@ -194,12 +194,16 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
             )
             .build()
 
-    /** Chompy closed to update itself to [version]: one tap opens it again. */
-    fun updated(version: String) {
+    /**
+     * Chompy closed to update itself to [version]: one tap opens it again. [quietly]: it updated while the
+     * user was away, which needs no sound.
+     */
+    fun updated(version: String, quietly: Boolean = false) {
         val notification = NotificationCompat.Builder(context, CHANNEL_UPDATES)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Chompy is updated to $version")
-            .setContentText("Tap to open it again")
+            .setContentTitle(if (quietly) "Chompy updated itself to $version" else "Chompy is updated to $version")
+            .setContentText(if (quietly) "Tap to see what's new" else "Tap to open it again")
+            .setSilent(quietly)
             .setAutoCancel(true)
             .setContentIntent(
                 PendingIntent.getActivity(

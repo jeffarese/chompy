@@ -1,6 +1,8 @@
 package com.jeffarese.rexmobile.model
 
+import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageInstaller
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.CoroutineScope
@@ -61,6 +63,10 @@ class UpdaterTest {
             .body((body ?: ByteArray(0)).toResponseBody("application/octet-stream".toMediaType())).build()
     }
 
+    /** How long until the app may close under the user, null while it is open; and when the updater asked to come back. */
+    @Volatile private var untilAway: Long? = null
+    private val comeBackIn = java.util.concurrent.CopyOnWriteArrayList<Long>()
+
     /** The profile the updater installs beside the APK, and how many times it was asked for one. */
     @Volatile private var profile: () -> ByteArray? = { null }
     private val profilesMade = AtomicInteger()
@@ -69,6 +75,7 @@ class UpdaterTest {
         context, scope, ReleaseFeed("o/r", OkHttpClient.Builder().addInterceptor(github).build()),
         currentVersion = current, dir = dir, verify = { problem }, metered = { metered }, clock = { now },
         makeProfile = { profilesMade.incrementAndGet(); profile() },
+        untilAway = { untilAway }, installLater = { comeBackIn += it },
     )
 
     private val sessions get() = context.packageManager.packageInstaller.mySessions
@@ -265,6 +272,99 @@ class UpdaterTest {
         assertNull(u.await { it as? UpdateState.Ready }.error)
         Thread.sleep(200)
         assertEquals(1, sessions.size)
+    }
+
+    @Test
+    fun installsByItselfOnceTheUserHasBeenAwayLongEnough() {
+        shadowOf(context.packageManager).setCanRequestPackageInstalls(true)
+        untilAway = 0
+        val u = updater()
+        u.check(manual = false)
+        assertEquals("0.3.2", u.await { it as? UpdateState.Installing }.release.version)
+        Thread.sleep(500)
+        assertEquals(1, sessions.size)
+    }
+
+    @Test
+    fun whileTheAppIsOpenItWaitsAndComesBackOnceTheUserLeaves() {
+        shadowOf(context.packageManager).setCanRequestPackageInstalls(true)
+        val u = updater()
+        u.check(manual = false)
+        u.await { it as? UpdateState.Ready }
+        Thread.sleep(300)
+        assertTrue("${u.state.value}", u.state.value is UpdateState.Ready)
+        assertTrue(comeBackIn.isEmpty())
+
+        // Left just now: the app keeps their place a while longer, so the update comes back after that.
+        untilAway = 30_000
+        u.onAway()
+        assertEquals(listOf(30_000L), comeBackIn)
+        assertTrue("${u.state.value}", u.state.value is UpdateState.Ready)
+        assertEquals(0, sessions.size)
+
+        // As UpdateJob does when it comes back.
+        untilAway = 0
+        runBlocking { u.updateQuietly(timeoutMs = 1_000) }
+        assertTrue("${u.state.value}", u.state.value is UpdateState.Installing)
+        assertEquals(1, sessions.size)
+    }
+
+    @Test
+    fun theJobFindsDownloadsAndInstallsAnUpdate() {
+        shadowOf(context.packageManager).setCanRequestPackageInstalls(true)
+        untilAway = 0
+        val u = updater()
+        runBlocking { u.updateQuietly(timeoutMs = 2_000) }
+        assertEquals("0.3.2", (u.state.value as UpdateState.Installing).release.version)
+        assertEquals(1, sessions.size)
+    }
+
+    @Test
+    fun whereAndroidAsksTheUserAfterAllTheUpdateWaitsForThem() {
+        shadowOf(context.packageManager).setCanRequestPackageInstalls(true)
+        untilAway = 0
+        val u = updater()
+        u.check(manual = false)
+        u.await { it as? UpdateState.Installing }
+        Thread.sleep(500)
+        u.onInstallStatus(PackageInstaller.STATUS_PENDING_USER_ACTION, null, Intent("confirm"))
+        assertNull(u.await { it as? UpdateState.Ready }.error)
+        // Not asked while away, and the session is let go.
+        assertNull(shadowOf(context as Application).nextStartedActivity)
+        assertEquals(0, sessions.size)
+
+        // It doesn't go by itself again, in this run of the app or the next.
+        u.onAway()
+        Thread.sleep(300)
+        assertTrue("${u.state.value}", u.state.value is UpdateState.Ready)
+        val next = updater()
+        next.onAway()
+        Thread.sleep(300)
+        assertTrue("${next.state.value}", next.state.value is UpdateState.Ready)
+
+        // The user still can.
+        next.install()
+        assertTrue("${next.state.value}", next.state.value is UpdateState.Installing)
+    }
+
+    @Test
+    fun aVersionPutOffOrNotYetAllowedWaitsForTheUser() {
+        val u = updater()
+        u.check()
+        val ready = u.await { it as? UpdateState.Ready }
+        // Android doesn't let Chompy install apps yet.
+        shadowOf(context.packageManager).setCanRequestPackageInstalls(false)
+        untilAway = 0
+        u.onAway()
+        Thread.sleep(300)
+        assertTrue("${u.state.value}", u.state.value is UpdateState.Ready)
+
+        shadowOf(context.packageManager).setCanRequestPackageInstalls(true)
+        u.snooze(ready.release)
+        u.onAway()
+        Thread.sleep(300)
+        assertTrue("${u.state.value}", u.state.value is UpdateState.Ready)
+        assertEquals(0, sessions.size)
     }
 
     @Test
