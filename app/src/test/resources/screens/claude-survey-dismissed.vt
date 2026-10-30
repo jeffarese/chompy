@@ -1,0 +1,55 @@
+
+
+
+
+
+
+
+
+
+
+
+
+[0m[1m[38;2;115;218;202m❯[0m [0m[38;5;2mclear[0m; [0m[38;5;2mcd[0m [0m[38;5;3m"[0m[38;5;5m$([0m[38;5;2mmktemp[0m -d[0m[38;5;5m)[0m[38;5;3m"[0m && CLAUDE_FORCE_DISPLAY
+_SURVEY=1  CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 
+[0m[4m[38;5;2mcommand[0m [0m[38;5;2mclaude[0m --session-id 0c1ee44e-7f56-471f-9d3
+7-ef84611ff3b8 --model claude-haiku-5-5 
+[11C[0m[1mClaude[1CCode[1C[0m[38;2;153;153;153mv2.1.314[0m
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█[3C[0m[38;2;153;153;153mHaiku[1C5.5[1Cwith[1Cmedium[1Ceffort[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀[2C[0m[38;2;153;153;153mClaude[1CMax[0m
+[0m[38;2;215;119;87m ▝▝[3C▝▝[3C[0m[38;2;153;153;153m/…/T/tmp.dvvWpyHYBN[0m
+
+
+[0m[38;2;153;153;153m⏺[1Cwatchtool: its session.append hook was [0m
+[2C[0m[38;2;153;153;153mskipped. "example-guard-default" runs [0m
+[2C[0m[38;2;153;153;153mfirst and sent the event on past it.[0m
+[46C[0m[38;2;153;153;153m[-][0m
+[0m[38;2;177;185;249m✦[0m [0m[38;2;153;153;153mHeads up · [0mRelease builds fall back to the
+  debug key when keystore.properties is
+[2Cmissing, so a phone that[1Chas[1Cthe[1Csigned[1Capp
+ [1Cwill refuse the update.
+
+[2C[0m[1mDebug-signed builds won't install[0m
+[2C- Android only installs[1Can[1Cupdate[1Csigned
+[4Cwith[1Cthe[1Csame[1Ckey[1Cas[1Cthe[1Capp[1Calready[1Con
+[2C  the phone.
+[2C-[1CWithout [0m[38;2;177;185;249mkeystore.properties[0m, the build
+[4Csigns with the debug[1Ckey, so the phone
+[2C [1Csees a different[1Capp[1Cand[1Crefuses[1Cit.
+[2C-[1C[0m[1mCheck that keystore.properties sits next [0m
+[4C[0m[1mto settings.gradle.kts[0m before you build[1Ca
+[4Crelease.
+
+  [0m[38;2;177;185;249m1[0m:[1CUnderstood[3C[0m[38;2;177;185;249m2[0m:[1CChat[1Cin[1Cmain[1Csession
+  [0m[38;2;177;185;249m0[0m: Dismiss
+
+[0m[38;2;136;136;136m──────────────────────────────────────────────────[0m
+❯ [0m[2mTry "how does <filepath> work?"[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────[0m
+[2C[0m[1m[38;5;180mJeff[0m[38;2;153;153;153m [0m[38;5;238m│[0m[38;2;153;153;153m [0m[38;5;78mH[0m[38;5;84ma[0m[38;5;114mi[0m[38;5;120mk[0m[38;5;84mu[0m[38;5;78m [0m[38;5;42m5[0m[38;5;78m.5[0m[38;5;244m@[0m[38;5;80mmedium[0m[38;2;153;153;153m [0m[38;5;238m│[0m[38;2;153;153;153m [0m[38;5;77m▁[1C0[0m[2m[38;5;244m/1M[0m[38;2;153;153;153m [0m[38;5;77m0%[0m[38;2;153;153;153m [1C[0m[38;5;77m ▁[1C0%[0m[38;2;153;153;153m [0m[2m[38;5;244m·5…[0m
+[2C[0m[38;2;255;193;7m⏵⏵[1Cauto[1Cmode[1Con[0m[38;2;153;153;153m (shift+tab[1Cto[1Ccycle)[0m
+
+
+
+
+

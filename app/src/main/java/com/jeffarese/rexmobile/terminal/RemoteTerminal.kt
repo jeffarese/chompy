@@ -90,6 +90,12 @@ data class RemoteKey(
             require(n in 0..9)
             return RemoteKey("digit_$n", text = "$n", codepoint = '0'.code + n)
         }
+
+        /** A letter key, a to z, without shift. */
+        fun letter(c: Char): RemoteKey {
+            require(c in 'a'..'z')
+            return RemoteKey("key_$c", text = "$c", codepoint = c.code)
+        }
     }
 }
 
@@ -771,6 +777,7 @@ class RemoteTerminal(
      * whole turn, so either one makes the program interruptible.
      */
     private fun publishScreenInfo(read: ScreenInfo) {
+        if (read.survey != null && read.survey != lastRead.survey) surveySince = SystemClock.uptimeMillis()
         lastRead = read
         _screenInfo.value = if (programWorking && !read.interruptible) read.copy(interruptible = true) else read
     }
@@ -1236,6 +1243,36 @@ class RemoteTerminal(
     private suspend fun awaitScreen(timeoutMs: Long, done: (ScreenInfo) -> Boolean): ScreenInfo? =
         withTimeoutOrNull(timeoutMs) { _screenInfo.first(done) }
 
+    // ---- Claude Code's surveys ----
+
+    /** When the survey on screen first showed: Claude ignores keys typed in its first moments, as it does a note's digits. */
+    private var surveySince = 0L
+    private var surveyJob: Job? = null
+
+    /**
+     * Answer the survey Claude Code shows over its input box by typing [answer]'s key into the
+     * empty box, which is how Claude takes it. Does nothing unless [survey] is still on screen, read
+     * from a live stream, and the input box is empty: with text in it, the key would only add to
+     * the text. Main thread.
+     */
+    fun answerSurvey(survey: ClaudeSurvey, answer: SurveyAnswer) {
+        val info = _screenInfo.value
+        if (!streamLive || phase != Phase.LIVE || info.survey != survey || answer !in survey.answers) return
+        if (!info.claudeInput.isNullOrEmpty()) return
+        val reading = fyiJob
+        reading?.cancel()
+        surveyJob?.cancel()
+        surveyJob = scope.launch {
+            // A note's read cut short leaves its panel first, so its keys don't land among these.
+            reading?.join()
+            val wait = surveySince + FYI_ARM_MS - SystemClock.uptimeMillis()
+            if (wait > 0) delay(wait)
+            val now = _screenInfo.value
+            if (!streamLive || phase != Phase.LIVE || now.survey != survey || !now.claudeInput.isNullOrEmpty()) return@launch
+            sendKey(if (answer.key.isDigit()) RemoteKey.digit(answer.key.digitToInt()) else RemoteKey.letter(answer.key))
+        }
+    }
+
     // ---- Phone sizing ----
 
     /** Take the block over and size it to this screen, or hand it back. */
@@ -1326,7 +1363,10 @@ class RemoteTerminal(
         /** How long a synchronized update may hold the screen before it is drawn anyway. */
         const val SYNC_UPDATE_TIMEOUT_MS = 250L
 
-        /** Claude Code ignores digits typed within 600 ms of a note's buttons showing, and leaves them in the input box. */
+        /**
+         * Claude Code ignores digits typed within 600 ms of a note's buttons showing, or keys within
+         * 600 ms of a survey's, and leaves them in the input box.
+         */
         private const val FYI_ARM_MS = 650L
         /** How long to wait for the panel to redraw after scrolling it. */
         private const val FYI_SCROLL_WAIT_MS = 1500L

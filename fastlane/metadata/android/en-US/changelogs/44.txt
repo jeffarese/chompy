@@ -1,0 +1,1 @@
+Claude Code's "How is Claude doing this session?" survey shows as a card, with its answers as buttons and ✕ to dismiss it. A "Heads up" note under the survey has no buttons until the survey is answered or dismissed, and now says so instead of seeming stuck.

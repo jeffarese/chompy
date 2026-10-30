@@ -133,6 +133,7 @@ import com.jeffarese.rexmobile.rex.ProgramStatus
 import com.jeffarese.rexmobile.rex.StreamState
 import com.jeffarese.rexmobile.rex.WindowView
 import com.jeffarese.rexmobile.terminal.ClassicSwitch
+import com.jeffarese.rexmobile.terminal.ClaudeSurvey
 import com.jeffarese.rexmobile.terminal.FyiAction
 import com.jeffarese.rexmobile.terminal.FyiNote
 import com.jeffarese.rexmobile.terminal.PromptOption
@@ -140,6 +141,7 @@ import com.jeffarese.rexmobile.terminal.RemoteKey
 import com.jeffarese.rexmobile.terminal.RemoteTerminal
 import com.jeffarese.rexmobile.terminal.ScreenInfo
 import com.jeffarese.rexmobile.terminal.ScreenPrompt
+import com.jeffarese.rexmobile.terminal.SurveyAnswer
 import com.jeffarese.rexmobile.terminal.TerminalViewport
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.max
@@ -528,6 +530,10 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
                     viewport.scrollToBottom()
                 },
                 onReadFyi = { terminal?.readFyi() },
+                onSurvey = { survey, answer ->
+                    terminal?.answerSurvey(survey, answer)
+                    viewport.scrollToBottom()
+                },
             )
             commandsOverlay.content?.let { panel ->
                 Box(Modifier.align(Alignment.BottomCenter).keepTapsOffTerminal()) { panel() }
@@ -896,7 +902,7 @@ private const val CARD_ARM_MS = 500L
 /** How long an answered card stays hidden if the screen still shows the same prompt, as when the answer was lost. */
 private const val ANSWERED_HIDE_MS = 1500L
 
-/** Claude Code ignores a note's digits for 600 ms after its buttons show. */
+/** Claude Code ignores a note's digits for 600 ms after its buttons show, and a survey's keys after it does. */
 private const val FYI_ARM_MS = 700L
 
 /**
@@ -907,14 +913,15 @@ private const val FYI_PRESSED_MS = 3500L
 
 /**
  * What sits over the bottom of the terminal: the answers to a prompt on screen (or the blocked
- * notice), else Claude's "You should know" note, and the jump back to the live screen while
- * reading history. The cards show only while the screen is [live]. Touches on any of it stay off
- * the terminal, which would pass them to the program as mouse clicks.
+ * notice), else Claude's survey and its "You should know" note, and the jump back to the live
+ * screen while reading history. The cards show only while the screen is [live]. Touches on any of
+ * it stay off the terminal, which would pass them to the program as mouse clicks.
  *
  * @param onTab moves one of Claude's questions to another of its tabs.
  * @param onOwn answers one of Claude's questions in the user's own words.
  * @param onFyi presses a button of the note.
  * @param onReadFyi has the rest of a note that doesn't fit Claude's panel read.
+ * @param onSurvey answers Claude's survey.
  */
 @Composable
 internal fun BottomOverlay(
@@ -929,6 +936,7 @@ internal fun BottomOverlay(
     onOwn: (ScreenPrompt, String) -> Unit = { _, _ -> },
     onFyi: (FyiNote, FyiAction) -> Unit = { _, _ -> },
     onReadFyi: () -> Unit = {},
+    onSurvey: (ClaudeSurvey, SurveyAnswer) -> Unit = { _, _ -> },
 ) {
     val prompt = info.value.prompt?.takeIf { live }
     val haptics = rememberViewHaptics()
@@ -951,6 +959,28 @@ internal fun BottomOverlay(
             fyiPressed = null
         }
     }
+    // Claude's survey shows when no prompt does, over any note, which has no buttons meanwhile. Its
+    // answers wait a moment too, and one tapped holds the rest until the survey changes, or for a
+    // while if it doesn't.
+    val survey = info.value.survey?.takeIf { live && prompt == null }
+    var surveyReady by remember(survey) { mutableStateOf(false) }
+    LaunchedEffect(survey) {
+        delay(FYI_ARM_MS)
+        surveyReady = true
+    }
+    var surveyPressed by remember { mutableStateOf<Pair<ClaudeSurvey, SurveyAnswer>?>(null) }
+    LaunchedEffect(survey) { if (surveyPressed?.first != survey) surveyPressed = null }
+    LaunchedEffect(surveyPressed) {
+        if (surveyPressed != null) {
+            delay(FYI_PRESSED_MS)
+            surveyPressed = null
+        }
+    }
+    val surveyBlocked = "Claude's message box has text. Send or clear it to answer.".takeIf {
+        survey != null && surveyPressed == null && !info.value.claudeInput.isNullOrEmpty()
+    }
+    val lastSurvey = remember { arrayOfNulls<ClaudeSurvey>(1) }
+    if (survey != null) lastSurvey[0] = survey
     // Claude's classic panel is only scrolled while Claude is idle, where an Esc that missed it
     // interrupts nothing: until then, buttons out of its sight can't be read or pressed.
     val fyiOutOfReach = fyi != null && !info.value.fullscreen && info.value.interruptible &&
@@ -958,6 +988,7 @@ internal fun BottomOverlay(
     val fyiBlocked = when {
         fyi == null || fyiPressed != null -> null
         !info.value.claudeInput.isNullOrEmpty() -> "Claude's message box has text. Send or clear it to use these buttons."
+        survey != null && fyi.actions.isEmpty() -> "Claude brings back the note's buttons once its survey is answered or dismissed."
         fyiOutOfReach && !fyi.complete -> "Claude is working. The rest of the note and its buttons come once it stops."
         fyiOutOfReach -> "Claude is working, so its panel can't scroll to these buttons. They work once it stops."
         else -> null
@@ -1038,6 +1069,23 @@ internal fun BottomOverlay(
                 } else {
                     PromptCard(p, onChoose = choose, onCollapse = { collapsed = true }, modifier = Modifier.keepTapsOffTerminal())
                 }
+            }
+        }
+        AnimatedVisibility(survey != null, enter = slideInVertically { it / 3 } + fadeIn(), exit = fadeOut()) {
+            lastSurvey[0]?.let { s ->
+                SurveyCard(
+                    s,
+                    pressed = surveyPressed?.second,
+                    blocked = surveyBlocked,
+                    onAnswer = answer@{ answer ->
+                        // Only the survey the screen still shows, once Claude takes its keys, one answer at a time.
+                        if (!surveyReady || surveyPressed != null || surveyBlocked != null || info.value.survey != s) return@answer
+                        haptics.confirm()
+                        surveyPressed = s to answer
+                        onSurvey(s, answer)
+                    },
+                    modifier = Modifier.keepTapsOffTerminal(),
+                )
             }
         }
         AnimatedVisibility(fyi != null && !fyiCollapsed, enter = slideInVertically { it / 3 } + fadeIn(), exit = fadeOut()) {

@@ -52,9 +52,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jeffarese.rexmobile.terminal.ClaudeSurvey
 import com.jeffarese.rexmobile.terminal.FyiAction
 import com.jeffarese.rexmobile.terminal.FyiLine
 import com.jeffarese.rexmobile.terminal.FyiNote
+import com.jeffarese.rexmobile.terminal.SurveyAnswer
 
 /**
  * Claude Code's colour for the ✦ of its notes and their buttons' digits: its dark theme's, or its light theme's on a
@@ -95,7 +97,8 @@ fun FyiCard(
     val context = LocalContext.current
     val dismiss = note.actions.firstOrNull { it.key == 0 && it.label.equals("Dismiss", ignoreCase = true) }
     val buttons = note.actions - setOfNotNull(dismiss)
-    val busy = note.complete && note.actions.isEmpty()
+    // Buttons to come, unless the notice says why there are none.
+    val busy = note.complete && note.actions.isEmpty() && blocked == null
     val enabled = pressed == null && blocked == null
     Column(
         modifier
@@ -147,13 +150,7 @@ fun FyiCard(
                 Explanation(body)
             }
         }
-        if (blocked != null) {
-            Row(Modifier.padding(top = 12.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Info, null, tint = Rex.blocked, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(blocked, color = Rex.blocked, fontSize = 12.sp, lineHeight = 16.sp)
-            }
-        }
+        if (blocked != null) Notice(blocked)
         if (buttons.isNotEmpty() || note.link != null) {
             FlowRow(
                 Modifier.padding(top = 14.dp, end = 12.dp),
@@ -176,6 +173,77 @@ fun FyiCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * One of Claude Code's surveys over the bottom of the terminal, such as "How is Claude doing this
+ * session?", with its answers as buttons and Dismiss as the ✕ in the corner.
+ *
+ * @param pressed the answer just tapped, while Claude takes it: the others wait.
+ * @param blocked why the answers can't work now, if they can't.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SurveyCard(
+    survey: ClaudeSurvey,
+    pressed: SurveyAnswer?,
+    blocked: String?,
+    onAnswer: (SurveyAnswer) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val dismiss = survey.answers.firstOrNull { it.label.equals("Dismiss", ignoreCase = true) }
+    val enabled = pressed == null && blocked == null
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .shadow(14.dp, FyiShape)
+            .clip(FyiShape)
+            .background(Rex.surface)
+            .border(0.5.dp, Rex.divider, FyiShape)
+            .semantics { paneTitle = "Survey from Claude: ${survey.question}" }
+            .padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 14.dp),
+    ) {
+        Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("●", color = Rex.unseen, fontSize = 12.sp)
+            Spacer(Modifier.width(8.dp))
+            Text("SURVEY", color = Rex.unseen, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp, maxLines = 1)
+            Spacer(Modifier.weight(1f))
+            if (dismiss != null) {
+                IconButton(onClick = { onAnswer(dismiss) }, enabled = enabled) {
+                    if (pressed == dismiss) WorkingDots(color = Rex.textDim)
+                    else Icon(Icons.Outlined.Close, "Dismiss", tint = Rex.textDim, modifier = Modifier.alpha(if (enabled) 1f else 0.4f))
+                }
+            }
+        }
+        Text(survey.question, color = Rex.text, fontSize = 15.sp, lineHeight = 21.sp, modifier = Modifier.padding(end = 12.dp))
+        if (blocked != null) Notice(blocked)
+        FlowRow(
+            Modifier.padding(top = 14.dp, end = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            survey.link?.let { url ->
+                NoteButton("Open page", Kind.LINK, enabled = true, working = false) {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
+            }
+            (survey.answers - setOfNotNull(dismiss)).forEach { a ->
+                NoteButton(a.label, Kind.SECONDARY, enabled, working = pressed == a) { onAnswer(a) }
+            }
+        }
+    }
+}
+
+/** Why a card's buttons can't work now. */
+@Composable
+private fun Notice(text: String) {
+    Row(Modifier.padding(top = 12.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.Info, null, tint = Rex.blocked, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, color = Rex.blocked, fontSize = 12.sp, lineHeight = 16.sp)
     }
 }
 

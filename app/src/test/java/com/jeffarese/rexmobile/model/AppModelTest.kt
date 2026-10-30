@@ -14,6 +14,7 @@ import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals
 import androidx.test.core.app.ApplicationProvider
 import com.jeffarese.rexmobile.FakeRex
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.junit.After
@@ -136,7 +137,8 @@ class AppModelTest {
         val host = host()
         waitFor("online") { host.state.value.status == ConnStatus.ONLINE }
         val raised = java.util.concurrent.CopyOnWriteArrayList<Alert>()
-        val listening = model.scope.launch { model.alerts.collect { raised += it } }
+        // Listening before the events go: an alert raised with no one listening is gone.
+        val listening = model.scope.launch(start = CoroutineStart.UNDISPATCHED) { model.alerts.collect { raised += it } }
         model.visibleBlockId = "b1"
         fun blocked(bid: String) = rex.controls.last().blockEvent(bid, "program_status_changed", buildJsonObject {
             putJsonObject("record") { put("id", "claude"); put("state", "blocked"); put("kind", "question") }

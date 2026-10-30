@@ -23,6 +23,8 @@ data class ScreenInfo(
     val fullscreen: Boolean = false,
     /** The note Claude Code's "You should know" plugin shows above its input box, if one shows. */
     val fyi: FyiNote? = null,
+    /** The survey Claude Code shows over its input box and any note, such as "How is Claude doing this session?", if one shows. */
+    val survey: ClaudeSurvey? = null,
 )
 
 /**
@@ -108,6 +110,24 @@ data class FyiLine(val kind: Kind, val text: String = "") {
         MISSING,
     }
 }
+
+/**
+ * One of Claude Code's surveys, such as "How is Claude doing this session?", or the question a
+ * rating may bring, "Can Anthropic look at your session transcript…". Claude takes an answer when
+ * its key is typed into the empty input box, as it does a note's buttons; while a survey shows, a
+ * note under it has no buttons.
+ */
+data class ClaudeSurvey(
+    /** The question, without its "(optional)". */
+    val question: String,
+    /** The answers, in the survey's order. */
+    val answers: List<SurveyAnswer>,
+    /** A page the survey links to, such as what sharing a transcript means. */
+    val link: String? = null,
+)
+
+/** An answer to one of Claude Code's surveys, given by typing [key] into Claude's empty input box. */
+data class SurveyAnswer(val key: Char, val label: String)
 
 /** A question on screen that the user answers by picking one of a few options. */
 data class ScreenPrompt(
@@ -268,13 +288,15 @@ object ScreenReader {
         val bottom = rows.subList(maxOf(0, end - 11), end + 1).map { it.text }
         val footer = rows.subList(0, end + 1).filter { !it.blank }.takeLast(3).map { it.text }.asReversed()
         val yesNoLine = cursorLine?.replace('\u00a0', ' ') ?: rows.getOrNull(cursorRow)?.text
+        val fyi = box?.let { fyiOf(lines, rows, it.first, columns, style = style) }
         return ScreenInfo(
             prompt = readMenu(rows, style) ?: yesNoLine?.let(::readYesNo),
             claudeMode = footer.firstNotNullOfOrNull(::modeOf),
             claudeEffort = effortOf(rows.map { it.text }, bottom, footer),
             interruptible = bottom.any { it.contains("esc to interrupt", ignoreCase = true) || SPINNER.matches(it) },
             claudeInput = box?.let { inputOf(rows, it, style) },
-            fyi = box?.let { fyiOf(lines, rows, it.first, columns, style = style) },
+            fyi = fyi,
+            survey = box?.let { surveyOf(rows, fyi?.screenRow ?: it.first, style) },
         )
     }
 
@@ -959,6 +981,56 @@ object ScreenReader {
         val startsCard = rows.getOrNull(i - 1)?.text?.isBlank() == true
         return startsCard && next != null && next.text.isNotBlank() && !wraps(Row(text), Row(next.text), width) &&
             text.trimEnd().last() !in ".,;:!?)\"'…"
+    }
+
+    // ---- Claude Code's surveys ----
+
+    private val SURVEY_QUESTION = Regex("""^● \S""")
+    /** An answer's key, two columns in or after a space, then ": " and its label, as "1: Bad" or "y: Yes". */
+    private val SURVEY_KEY = Regex("""(?:^ {2}| )([0-9a-z]): \S""")
+    /** A whole link, not one cut short with "…". */
+    private val SURVEY_LINK = Regex("""^https?://[^\s…]+$""")
+    /** The rows a survey's question and link may take over its answers. */
+    private const val MAX_SURVEY_ROWS = 6
+    /** Claude's hints over its input box start this far in or further, even at phone width. */
+    private const val HINT_INDENT = 8
+
+    /**
+     * The survey Claude Code draws over its input box, and over a note's panel if one shows: "● "
+     * and the question, which wraps two columns in, maybe a link, and the answers, two columns in,
+     * each a key, ": " and a label. The ● and the keys are in cyan. Blank rows, the effort badge
+     * and Claude's hints may sit between the answers and the box; nothing sits between them and a
+     * panel.
+     *
+     * @param under the row the survey sits over: the panel's first, or the rule over the input box.
+     */
+    private fun surveyOf(rows: List<Row>, under: Int, style: ((row: Int, index: Int) -> Long)?): ClaudeSurvey? {
+        var last = under - 1
+        while (last >= 0 && rows[last].let { it.blank || it.indent >= HINT_INDENT || EFFORT_BADGE.containsMatchIn(it.text) }) last--
+        if (last < 1) return null
+        val answers = answersOf(rows[last].text, last, style) ?: return null
+        var first = last - 1
+        while (!SURVEY_QUESTION.containsMatchIn(rows[first].text)) {
+            if (rows[first].indent != 2 || last - first >= MAX_SURVEY_ROWS || first == 0) return null
+            first--
+        }
+        if (style != null && TextStyle.decodeForeColor(style(first, 0)) == TextStyle.COLOR_INDEX_FOREGROUND) return null
+        val text = (first until last).map { rows[it].text.trim() }
+        // A link under the question takes the rows left, wrapped where it is longer than one.
+        val link = text.indexOfFirst { it.startsWith("http://") || it.startsWith("https://") }.takeIf { it > 0 } ?: text.size
+        return ClaudeSurvey(
+            question = text.take(link).joinToString(" ").removePrefix("● ").removeSuffix("(optional)").trim(),
+            answers = answers,
+            link = text.drop(link).joinToString("").takeIf { SURVEY_LINK.matches(it) },
+        )
+    }
+
+    /** The answers that fill [line] from two columns in; null if anything else is on it. */
+    private fun answersOf(line: String, row: Int, style: ((row: Int, index: Int) -> Long)?): List<SurveyAnswer>? {
+        val keys = SURVEY_KEY.findAll(line).map { it.groups[1]!!.range.first }.filter { style == null || hotkeyAt(style, row, it) }.toList()
+        if (keys.size < 2 || keys.first() != 2) return null
+        val answers = keys.mapIndexed { n, at -> SurveyAnswer(line[at], line.substring(at + 3, keys.getOrNull(n + 1) ?: line.length).trim()) }
+        return answers.takeIf { a -> a.none { it.label.isEmpty() } && a.distinctBy { it.key }.size == a.size }
     }
 
     // ---- Lines ----

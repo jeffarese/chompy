@@ -36,8 +36,12 @@ import java.util.concurrent.TimeUnit
  * explanation long enough to overflow 40 rows at 50 columns. Set REX_LIVE_HOST, and
  * REX_LIVE_FYI_SESSION to that id (REX_LIVE_FYI_CLASSIC_SESSION to a second one for the classic
  * renderer). For [understoodUnderAShell], set REX_LIVE_FYI_SHELL_SESSION and
- * REX_LIVE_FYI_SHELL_CLASSIC_SESSION to two more. Claude starts with each id in a new temporary
- * directory, and the session is destroyed at the end; the store entries are the caller's to remove.
+ * REX_LIVE_FYI_SHELL_CLASSIC_SESSION to two more. For [aSurveyOverTheNote], set
+ * REX_LIVE_FYI_SURVEY_SESSION and REX_LIVE_FYI_SURVEY_CLASSIC_SESSION to two whose view is already
+ * "explained" (the line, the explanation as its text, and iteration 1), as Claude shows no offer
+ * under a survey, with an explanation short enough for the survey to fit over it at 50x40. Claude
+ * starts with each id in a new temporary directory, and the session is destroyed at the end; the
+ * store entries are the caller's to remove.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -86,6 +90,31 @@ class LiveFyiTest {
                 pump(500)
                 t.typeText("clear; $HINT_AT_ONCE $CLASSIC command claude --session-id $classicSession $CLAUDE\r")
                 understoodUnderAShell(t, fullscreen = false)
+                exitClaude(t)
+            }
+        }
+    }
+
+    /**
+     * Claude's survey over an open note, which has no buttons meanwhile: dismissed from the phone,
+     * after which the note's buttons come back and Understood is pressed. Claude shows the survey at
+     * once here.
+     */
+    @Test
+    fun aSurveyOverTheNote() {
+        val fullscreenSession = System.getenv("REX_LIVE_FYI_SURVEY_SESSION")
+        assumeTrue("set REX_LIVE_HOST and REX_LIVE_FYI_SURVEY_SESSION to run", !fullscreenSession.isNullOrBlank())
+        val classicSession = System.getenv("REX_LIVE_FYI_SURVEY_CLASSIC_SESSION")
+        onRex { t, _ ->
+            t.typeText("cd \"$(mktemp -d)\" && $SURVEY_AT_ONCE command claude --session-id $fullscreenSession $CLAUDE $FULLSCREEN\r")
+            surveyOverTheNote(t, fullscreen = true)
+            exitClaude(t)
+
+            // At 50x40 still: on a shorter screen, the classic renderer pushes the survey over the note out of sight.
+            if (!classicSession.isNullOrBlank()) {
+                pump(500)
+                t.typeText("clear; $SURVEY_AT_ONCE $CLASSIC command claude --session-id $classicSession $CLAUDE\r")
+                surveyOverTheNote(t, fullscreen = false)
                 exitClaude(t)
             }
         }
@@ -213,6 +242,33 @@ class LiveFyiTest {
         assertTrue(screen().any { it.endsWith(" [-]") && it.trim() != "[-]" })
     }
 
+    /** The survey over an open note is dismissed from the phone, and then the note's Understood pressed. */
+    private fun surveyOverTheNote(t: RemoteTerminal, fullscreen: Boolean) {
+        val mode = if (fullscreen) "fullscreen" else "classic"
+        waitFor("the survey over the note ($mode)", 60_000) { info().survey != null && info().fyi != null }
+        assertEquals(fullscreen, info().fullscreen)
+        val survey = info().survey!!
+        println("$mode survey: ${survey.question} ${survey.answers}")
+        assertEquals(listOf("Bad", "Fine", "Good", "Dismiss"), survey.answers.map { it.label })
+        // Claude gives the digits to the survey meanwhile.
+        assertTrue(info().fyi!!.actions.isEmpty())
+
+        t.answerSurvey(survey, survey.answers.first { it.label == "Dismiss" })
+        waitFor("the survey to go ($mode)", 10_000) { info().survey == null }
+        assertEquals("", info().claudeInput)
+        // In fullscreen the buttons may be under the panel's window, which reading the rest brings into it.
+        waitFor("the note's buttons ($mode)", 30_000) {
+            info().fyi?.let { if (!it.complete) t.readFyi() }
+            info().fyi?.actions?.any { it.label == "Understood" } == true
+        }
+        val note = info().fyi!!
+        t.pressFyi(note, note.actions.first { it.label == "Understood" })
+        waitFor("the note to go ($mode)", 10_000) { info().fyi == null }
+        // The digit went to the button, not into the box.
+        pump(1_000)
+        assertEquals("", info().claudeInput)
+    }
+
     private fun exitClaude(t: RemoteTerminal) {
         t.paste("/exit")
         t.sendKey(RemoteKey.ENTER)
@@ -265,5 +321,7 @@ class LiveFyiTest {
         const val CLASSIC = "CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1"
         /** Claude's "new task? /clear to save … tokens" hint, after a few idle seconds rather than 75 minutes and 100k tokens. */
         const val HINT_AT_ONCE = "CLAUDE_CODE_IDLE_TOKEN_THRESHOLD=1 CLAUDE_CODE_IDLE_THRESHOLD_MINUTES=0.1"
+        /** Claude's "How is Claude doing this session?" survey as it starts, rather than after a session's turns. */
+        const val SURVEY_AT_ONCE = "CLAUDE_FORCE_DISPLAY_SURVEY=1"
     }
 }
