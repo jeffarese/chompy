@@ -48,6 +48,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -122,6 +123,8 @@ private val ALERT_CHANNELS = listOf(
 )
 
 private enum class Page { LICENSES, CRASH, RETURNS, KEYS, STRIP, THEMES }
+
+private const val PRIVACY_POLICY = "https://github.com/jeffarese/chompy/blob/main/PRIVACY.md"
 
 /**
  * The app's settings, and the way to the hosts. [onShowWelcome], when there is a welcome to show,
@@ -416,6 +419,12 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onHosts: () -> Unit, onS
                     Divider()
                     SettingRow("Open-source licenses", null, onClick = { page = Page.LICENSES }) {
                         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = Rex.textDim)
+                    }
+                    Divider()
+                    SettingRow("Privacy policy", null, onClick = {
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY))) }
+                    }) {
+                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, tint = Rex.textDim)
                     }
                     if (crash != null) {
                         Divider()
