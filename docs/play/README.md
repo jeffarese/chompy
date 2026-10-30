@@ -80,8 +80,22 @@ with `fastlane supply`:
 | What's new (500) | `changelogs/<versionCode>.txt`, or `default.txt` |
 | Video | A YouTube link to the promo video ([how it's made](../demo/README.md#for-google-play)) |
 
-[`store-art.py`](store-art.py) makes the icon and the feature graphic from the art in `art/`. Elsewhere
-in the listing:
+[`store-art.py`](store-art.py) makes the icon and the feature graphic from the art in `art/`, and the
+screenshots from the raw captures in [`shots/`](shots), each in a phone under a headline:
+
+| Screenshot | Headline |
+|---|---|
+| `1_board` | Every agent, on one board |
+| `2_notification` | Answer from the notification |
+| `3_permission` | Approve without the laptop |
+| `4_note` | Read what Claude flags |
+| `5_claude_controls` | Claude's controls at hand |
+| `6_themes` | All 41 of Rex's themes |
+
+The words are in `SHOTS` at the top of the script. Play takes a headline only if it covers no more than
+a fifth of the image, and no ranking, price or call to action ("#1", "Best", "Download now"). After a new
+recording, put the captures in `shots/` under the same names, check the boxes of the parts each one
+lifts out of the phone, and run it again. Elsewhere in the listing:
 
 - **Category:** Tools. **Tags:** developer tools, productivity.
 - **Contact email:** jeffarese@gmail.com. **Website:** https://github.com/jeffarese/chompy

@@ -74,9 +74,11 @@ little longer at some of them, for the last banner to go and the note's card to 
 - **The README's** come from a run at the emulator's own size, scaled to 540×1200: `board` is
   `docs/media/board.png`, `permission` is `answer.png` and `note-open` is `note.png`.
 - **Play's** come from a run at 1080×1920, since Play takes no screenshot longer than twice its width.
-  Run `adb shell wm size 1080x1920` first, and `adb shell wm size reset` after. They are
-  `fastlane/metadata/android/en-US/images/phoneScreenshots`: the board, a notification (below),
-  permission, the note, Claude's controls, and Settings › Look › Theme.
+  Run `adb shell wm size 1080x1920` first, and `adb shell wm size reset` after. They go in
+  `docs/play/shots`: `board` as `1_board.png`, the notification (below) as `2_notification.png`,
+  `permission` as `3_permission.png`, `note-open` as `4_note.png`, `effort` as `5_claude_controls.png`,
+  and Settings › Look › Theme as `6_themes.png`. [`store-art.py`](../play/store-art.py) then puts each in
+  a phone under its headline, in `fastlane/metadata/android/en-US/images/phoneScreenshots`.
 
 ## For Google Play
 
@@ -86,7 +88,7 @@ little longer at some of them, for the last banner to go and the note's card to 
   `build/demo/away-raw.mp4`, for the foreground service declaration, and the notification shade in
   `build/demo/notification.png`, for the listing.
 - **The promo video**, landscape as Play shows it: the take over a backdrop with the name, made by
-  [`store-art.py`](../play/store-art.py) with the icon and the feature graphic.
+  [`store-art.py`](../play/store-art.py) with the icon, the feature graphic and the screenshots.
 
   ```sh
   python3 docs/play/store-art.py
