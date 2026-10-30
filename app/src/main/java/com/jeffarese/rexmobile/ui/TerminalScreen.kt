@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -147,6 +148,7 @@ import kotlin.math.min
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 private val NO_INFO = MutableStateFlow(ScreenInfo())
@@ -295,11 +297,19 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
     val live = state.status == ConnStatus.ONLINE && streamState == StreamState.LIVE
     val working = agentWorking(live, status?.state, interruptible)
     val keepScreenOn by settings.keepScreenOn.flow.collectAsState()
+    // A touch or a key restarts the time an agent's work keeps the screen on. Read only by the effect,
+    // so a touch doesn't redraw the screen.
+    val lastTouch = remember { MutableStateFlow(SystemClock.uptimeMillis()) }
+    val touched = { lastTouch.value = SystemClock.uptimeMillis() }
+    viewport.onTyped = touched
     LaunchedEffect(working, keepScreenOn) {
-        viewport.keepScreenOn = when (keepScreenOn) {
-            KeepScreenOn.WORKING -> working
-            KeepScreenOn.ALWAYS -> true
-            KeepScreenOn.NEVER -> false
+        lastTouch.collectLatest { t ->
+            val left = keepScreenOnFor(keepScreenOn, working, SystemClock.uptimeMillis() - t)
+            viewport.keepScreenOn = left > 0
+            if (left in 1 until Long.MAX_VALUE) {
+                delay(left)
+                viewport.keepScreenOn = false
+            }
         }
     }
     // Compose's haptics follow the setting app-wide; the terminal view's own (a long press to select) follow it here.
@@ -329,7 +339,13 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
     val agentPane = programOf(meta).startsWith("claude") || meta?.statuses?.isNotEmpty() == true
 
     Column(
-        Modifier.fillMaxSize().background(Rex.bg).statusBarsPadding()
+        // Any touch on the screen counts, the terminal's included: seen on its way down, and left for what it lands on.
+        Modifier.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) if (awaitPointerEvent(PointerEventPass.Initial).type == PointerEventType.Press) touched()
+            }
+        }
+            .fillMaxSize().background(Rex.bg).statusBarsPadding()
             // A cutout or a navigation bar at the side, as in landscape, keeps off the terminal's columns and the back button.
             .windowInsetsPadding(WindowInsets.displayCutout.union(WindowInsets.navigationBars).only(WindowInsetsSides.Horizontal)),
     ) {
@@ -528,6 +544,7 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
             waiting = waiting,
             shell = !agentPane && !isClaude,
             composerFocus = composerFocus,
+            onTyped = touched,
         )
     }
 
@@ -615,6 +632,20 @@ private fun screenLinks(terminal: RemoteTerminal): List<String> {
 internal fun agentWorking(live: Boolean, state: String?, interruptible: Boolean): Boolean =
     live && (state == "working" || interruptible)
 
+/** How long an agent's work keeps the screen on after the last touch or key: a phone left on a long run still goes dark. */
+internal const val WORKING_AWAKE_MS = 10 * 60_000L
+
+/**
+ * How much longer the terminal keeps the screen on, [sinceTouch] ms after the user last touched it or
+ * typed: [Long.MAX_VALUE] for as long as it shows, 0 for not at all. While an agent is [working] it is
+ * until [WORKING_AWAKE_MS] after that touch; then the system's own timeout applies.
+ */
+internal fun keepScreenOnFor(setting: KeepScreenOn, working: Boolean, sinceTouch: Long): Long = when (setting) {
+    KeepScreenOn.ALWAYS -> Long.MAX_VALUE
+    KeepScreenOn.NEVER -> 0
+    KeepScreenOn.WORKING -> if (working) (WORKING_AWAKE_MS - sinceTouch).coerceAtLeast(0) else 0
+}
+
 /**
  * What the Claude strip shows for its mode or effort: the value [read] from the screen, else the
  * [last] known one. While a prompt [covered] Claude's footer the last known one comes first, as the
@@ -664,6 +695,7 @@ internal class CommandsOverlay {
  *   dimmed and inert, and the message box keeps its text. Null when input goes through.
  * @param shell the pane runs a shell, so the keyboard leaves case and spelling alone.
  * @param composerFocus focuses the message box, as when leaving direct typing.
+ * @param onTyped is told of each change to the message box, as the user being there.
  */
 @Composable
 internal fun InputPanel(
@@ -681,12 +713,14 @@ internal fun InputPanel(
     waiting: String? = null,
     shell: Boolean = false,
     composerFocus: FocusRequester? = null,
+    onTyped: () -> Unit = {},
 ) {
     var draft by remember(blockId) {
         val saved = blockId?.let { model.drafts[it] }.orEmpty()
         mutableStateOf(TextFieldValue(saved, TextRange(saved.length)))
     }
     fun updateDraft(v: TextFieldValue) {
+        if (v.text != draft.text) onTyped()
         draft = v
         if (blockId != null) {
             if (v.text.isEmpty()) model.drafts.remove(blockId) else model.drafts[blockId] = v.text

@@ -281,7 +281,15 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onHosts: () -> Unit, onS
                         phoneMode,
                     ) { settings.phoneMode.value = it }
                     Divider()
-                    ChoiceRow("Keep the screen on", keepScreenOn, KeepScreenOn.entries, label = { it.label }) { settings.keepScreenOn.value = it }
+                    ChoiceRow(
+                        "Keep the screen on", keepScreenOn, KeepScreenOn.entries,
+                        detail = when (keepScreenOn) {
+                            KeepScreenOn.WORKING -> "Until ${WORKING_AWAKE_MS / 60_000} minutes after you last touch the terminal or type"
+                            KeepScreenOn.ALWAYS -> "While a terminal is open"
+                            KeepScreenOn.NEVER -> null
+                        },
+                        label = { it.label },
+                    ) { settings.keepScreenOn.value = it }
                 }
             }
 

@@ -63,6 +63,9 @@ class TerminalViewport(context: Context, typeface: Typeface) : FrameLayout(conte
     var onPhoneTextSizeChanged: (Int) -> Unit = {}
     var onTap: () -> Unit = {}
 
+    /** Called for each key or character typed into the terminal, from a keyboard of either kind. */
+    var onTyped: () -> Unit = {}
+
     /** Called on the main thread when the view scrolls into history: rows above the live screen, 0 at the bottom. */
     var onScrollbackChanged: (rows: Int) -> Unit = {}
 
@@ -311,6 +314,7 @@ class TerminalViewport(context: Context, typeface: Typeface) : FrameLayout(conte
         override fun isTerminalViewSelected() = true
         override fun copyModeChanged(copyMode: Boolean) = Unit
         override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean {
+            onTyped()
             val send = onRemoteKey ?: return false
             if (keyCode != KeyEvent.KEYCODE_ESCAPE) return false
             // Read both sticky modifiers, so they are used up by this key even when the keyboard's are held.
@@ -326,7 +330,10 @@ class TerminalViewport(context: Context, typeface: Typeface) : FrameLayout(conte
         override fun readAltKey(): Boolean = stickyAlt.also { if (it) consume() }
         override fun readShiftKey(): Boolean = stickyShift.also { if (it) consume() }
         override fun readFnKey() = false
-        override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession) = false
+        override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean {
+            onTyped()
+            return false
+        }
         override fun onEmulatorSet() = Unit
         override fun onScrollbackChanged(rows: Int) = this@TerminalViewport.onScrollbackChanged(rows)
         override fun logError(tag: String?, message: String?) = Unit
