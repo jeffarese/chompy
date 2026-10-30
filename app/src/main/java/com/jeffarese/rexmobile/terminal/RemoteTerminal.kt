@@ -141,10 +141,21 @@ class RemoteTerminal(
     var view: TerminalView? = null
         set(value) {
             field?.setWheelSink(null)
+            field?.setWatcher(null)
+            if (field != null && value == null) {
+                // The rows read for the view go, and the history they unpacked is packed again.
+                session.emulator?.screen?.dropRows()
+                recompress()
+            }
             field = value
+            shown = value?.isWindowShown == true
             if (value != null) {
+                viewed = true
                 value.setWheelSink(wheelSink)
+                value.setWatcher(watcher)
                 colors()?.let { applyThemeGlobally(it) }
+                // Output held back while nothing showed it.
+                flush()
                 main.post { value.onScreenUpdated() }
                 if (unread) {
                     // Output came while it was hidden, so what was read last may be gone.
@@ -155,9 +166,38 @@ class RemoteTerminal(
             }
         }
 
+    /** A view has shown this terminal, unlike one only opened ahead of time. Main thread only. */
+    var viewed = false
+        private set
+
+    /**
+     * A view shows the screen and its window can be seen, so output is drawn as it comes. Set on the
+     * main thread, read on OkHttp's.
+     */
+    @Volatile private var shown = false
+
+    private val watcher = object : TerminalView.Watcher {
+        override fun onWindowShown(shown: Boolean) {
+            this@RemoteTerminal.shown = shown
+            if (!shown) return
+            flush()
+            if (unread) {
+                // Output came while the app was away: read the screen at once, so a prompt still on it stays shown.
+                unread = false
+                main.removeCallbacks(readScreenInfo)
+                readScreenInfo.run()
+            }
+        }
+
+        override fun onBackFromHistory() = recompress()
+    }
+
     // Output handling. `pending` is filled on OkHttp's thread and drained on the main thread.
     private val pending = ByteArrayOutputStream()
     private var flushPosted = false
+    /** The flush posted waits, for output nobody sees: see [HIDDEN_FLUSH_MS]. Guarded by `pending`. */
+    private var flushDelayed = false
+    private val flushOutput = Runnable { flush() }
     /** What `pending` holds is a fresh stream's, kept for [startFresh] to take: it hasn't run yet. */
     private var freshPending = false
     @Volatile private var lastByteAt = 0L
@@ -182,7 +222,7 @@ class RemoteTerminal(
     private var unread = false
     private val readScreenInfo = Runnable {
         readBy = 0L
-        if (view == null) return@Runnable run { unread = true }
+        if (!shown) return@Runnable run { unread = true }
         // Not from a frame half drawn: it is whole within SYNC_UPDATE_TIMEOUT_MS.
         if (session.isUpdateHeld) return@Runnable scheduleScreenRead()
         val emulator = session.emulator
@@ -212,7 +252,7 @@ class RemoteTerminal(
 
         override fun key(key: RemoteKey) = sendKey(key)
 
-        override fun lines() = session.emulator?.let(ScreenReader::wholeLines).orEmpty()
+        override fun lines() = session.emulator?.let(ScreenReader::wholeLines).orEmpty().also { recompress() }
 
         override fun screen() = session.emulator?.let(ScreenReader::visibleLines).orEmpty()
     }, scope)
@@ -244,12 +284,20 @@ class RemoteTerminal(
             }.let { }
             override fun onOutput(bytes: ByteArray, offset: Int, length: Int) {
                 lastByteAt = SystemClock.uptimeMillis()
+                val wait: Boolean
                 synchronized(pending) {
                     pending.write(bytes, offset, length)
-                    if (flushPosted) return
+                    wait = !shown && pending.size() < HIDDEN_FLUSH_BYTES
+                    if (flushPosted && (wait || !flushDelayed)) return
                     flushPosted = true
+                    flushDelayed = wait
                 }
-                main.post(::flush)
+                if (wait) {
+                    main.postDelayed(flushOutput, HIDDEN_FLUSH_MS)
+                } else {
+                    main.removeCallbacks(flushOutput)
+                    main.post(flushOutput)
+                }
             }
 
             override fun onMessage(msg: JsonObject) = main.post { handleMessage(msg) }.let { }
@@ -383,6 +431,7 @@ class RemoteTerminal(
         closed = true
         main.removeCallbacks(readScreenInfo)
         main.removeCallbacks(compressHistory)
+        main.removeCallbacks(flushOutput)
         main.post {
             snapshot?.close()
             snapshot = null
@@ -557,6 +606,8 @@ class RemoteTerminal(
     }
 
     private fun flush() {
+        // Whatever was posted is done here.
+        main.removeCallbacks(flushOutput)
         val bytes: ByteArray
         synchronized(pending) {
             flushPosted = false
@@ -588,8 +639,27 @@ class RemoteTerminal(
         val activity = session.emulator?.compressionActivity ?: return
         if (activity == compressionActivity) return
         compressionActivity = activity
+        recompress()
+    }
+
+    /**
+     * Compress the history after a quiet spell, whatever the terminal's activity: reading old rows,
+     * such as scrolling back through them, unpacks their pages without counting as activity.
+     */
+    private fun recompress() {
         main.removeCallbacks(compressHistory)
         main.postDelayed(compressHistory, COMPRESS_AFTER_QUIET_MS)
+    }
+
+    /**
+     * Let go of what reading the terminal took: the rows copied out of it, and the history unpacked,
+     * which is compressed again at once. For when memory runs short. Main thread only.
+     */
+    fun trimMemory() {
+        val emulator = session.emulator ?: return
+        emulator.screen.dropRows()
+        main.removeCallbacks(compressHistory)
+        emulator.compressHistory(true)
     }
 
     /** Shows a frame whose synchronized update never ended, as a program stopped partway through leaves. */
@@ -707,8 +777,8 @@ class RemoteTerminal(
 
     /** Read the screen 120 ms after output settles, and at least every 400 ms while it keeps coming. */
     private fun scheduleScreenRead() {
-        // Nobody sees it while hidden: it is read when a view attaches.
-        if (view == null) return run { unread = true }
+        // Nobody sees it while hidden: it is read when a view shows it.
+        if (!shown) return run { unread = true }
         val now = SystemClock.uptimeMillis()
         if (readBy == 0L) readBy = now + 400
         main.removeCallbacks(readScreenInfo)
@@ -1231,6 +1301,13 @@ class RemoteTerminal(
         const val EARLY_SCREEN_AFTER_MS = 1_000L
         /** How long the stream stays quiet before its history is compressed. */
         const val COMPRESS_AFTER_QUIET_MS = 2_000L
+        /**
+         * How long output nobody sees waits to be fed to the terminal, so a chatty program in another
+         * tab costs a few large writes a second rather than one a message. Showing it feeds it at once.
+         */
+        const val HIDDEN_FLUSH_MS = 300L
+        /** Output nobody sees that is fed at once, whatever the wait. */
+        const val HIDDEN_FLUSH_BYTES = 256 * 1024
         /** The first wait before asking again for a redraw that failed, doubling each time up to the most. */
         const val SYNC_RETRY_MS = 1_000L
         const val SYNC_RETRY_MAX_MS = 8_000L

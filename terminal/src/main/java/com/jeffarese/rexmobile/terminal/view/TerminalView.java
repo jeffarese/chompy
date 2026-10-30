@@ -130,6 +130,19 @@ public final class TerminalView extends View {
     /** The last {@link TerminalViewClient#onScrollbackChanged(int)} value, so it is only called on a change. */
     private int mReportedScrollback = -1;
 
+    /** Told what the terminal behind the view needs to know of it: whether anyone can see it, and when history is left. */
+    public interface Watcher {
+        /** The view's window was shown or hidden, as when the app goes to the background and comes back. */
+        void onWindowShown(boolean shown);
+
+        /** The view scrolled from history back to the live screen. */
+        void onBackFromHistory();
+    }
+
+    private Watcher mWatcher;
+    /** Whether the view's window shows; a view not in a window yet counts as shown. */
+    private boolean mWindowShown = true;
+
     /** The scroll thumb, drawn here since a view made in code has no scrollbar of its own. */
     private final Paint mThumbPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF mThumbRect = new RectF();
@@ -288,6 +301,24 @@ public final class TerminalView extends View {
     public void setWheelSink(WheelSink sink) {
         if (mWheelSink != null && mWheelSink != sink) mWheelSink.stopScrolling();
         mWheelSink = sink;
+    }
+
+    public void setWatcher(Watcher watcher) {
+        mWatcher = watcher;
+    }
+
+    /** Whether the view's window shows, so what the view draws can be seen. */
+    public boolean isWindowShown() {
+        return mWindowShown;
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        boolean shown = visibility == VISIBLE;
+        if (shown == mWindowShown) return;
+        mWindowShown = shown;
+        if (mWatcher != null) mWatcher.onWindowShown(shown);
     }
 
     /**
@@ -699,8 +730,10 @@ public final class TerminalView extends View {
     private void reportScrollback() {
         int rows = mScroll.getRowsAboveBottom();
         if (rows == mReportedScrollback || mClient == null) return;
+        boolean back = rows == 0 && mReportedScrollback > 0;
         mReportedScrollback = rows;
         mClient.onScrollbackChanged(rows);
+        if (back && mWatcher != null) mWatcher.onBackFromHistory();
     }
 
     /** Rows scrolled up into history, counting a part row as one: 0 at the live bottom. */
