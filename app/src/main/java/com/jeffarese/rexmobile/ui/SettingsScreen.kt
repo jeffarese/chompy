@@ -478,7 +478,7 @@ fun HapticsFromSettings(settings: Settings, content: @Composable () -> Unit) {
     else CompositionLocalProvider(LocalHapticFeedback provides NoHaptics, content = content)
 }
 
-private object NoHaptics : HapticFeedback {
+internal object NoHaptics : HapticFeedback {
     override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) = Unit
 }
 

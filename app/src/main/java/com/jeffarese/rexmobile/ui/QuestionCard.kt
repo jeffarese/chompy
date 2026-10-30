@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -83,6 +84,8 @@ fun QuestionCard(
             .clip(CardShape)
             .background(Rex.surface)
             .border(0.5.dp, Rex.divider, CardShape)
+            // Screen readers say the question as the card comes up, as a dialog's title.
+            .semantics { paneTitle = prompt.question ?: if (review) "Ready to submit your answers?" else "Claude has a question" }
             .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

@@ -34,6 +34,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +72,8 @@ fun PromptCard(
             .clip(CardShape)
             .background(Rex.surface)
             .border(0.5.dp, Rex.divider, CardShape)
+            // Screen readers say the question as the card comes up, as a dialog's title.
+            .semantics { paneTitle = prompt.question ?: "Choose an option" }
             .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 12.dp),
     ) {
         Row(verticalAlignment = if (prompt.context.isEmpty()) Alignment.CenterVertically else Alignment.Top) {

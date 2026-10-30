@@ -37,15 +37,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -132,10 +132,10 @@ fun KeyBar(
     onToggleStrip: (() -> Unit)? = null,
     enabled: Boolean = true,
 ) {
-    val haptic = LocalHapticFeedback.current
+    val haptics = rememberViewHaptics()
     val mods = controls.modifiers
     fun press(k: BarKey) {
-        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        haptics.keyTap()
         when (k.special) {
             Special.SHIFT -> mods.shift = !mods.shift
             Special.CTRL -> mods.ctrl = !mods.ctrl
@@ -153,11 +153,14 @@ fun KeyBar(
             else -> false
         }
         if (k.special == Special.PASTE) {
-            KeyCap(description = k.description, enabled = enabled, onPress = { press(k) }) {
+            KeyCap(description = k.description, enabled = enabled, onPress = { press(k) }, onRefused = haptics::reject) {
                 Icon(Icons.Outlined.ContentPaste, null, tint = Rex.text, modifier = Modifier.size(18.dp))
             }
         } else {
-            KeyCap(k.label, active = active, repeat = k.repeat, description = k.description, enabled = enabled) { press(k) }
+            KeyCap(
+                k.label, active = active, sticky = k.special in STICKY, repeat = k.repeat, description = k.description, enabled = enabled,
+                onRefused = haptics::reject,
+            ) { press(k) }
         }
     }
     val shown = keys.mapNotNull { KEYS_BY_ID[it] }.filter { shiftTab || it != SHIFT_TAB }
@@ -196,69 +199,86 @@ fun KeyBar(
     }
 }
 
+/** The keys held for the next key, which say whether they are on. */
+private val STICKY = setOf(Special.SHIFT, Special.CTRL, Special.ALT)
+
 @Composable
 private fun KeyCap(
     label: String,
     active: Boolean = false,
+    sticky: Boolean = false,
     repeat: Boolean = false,
     description: String? = null,
     enabled: Boolean = true,
+    onRefused: () -> Unit = {},
     onPress: () -> Unit,
-) = KeyCap(active, repeat, description, enabled, onPress) {
+) = KeyCap(active, sticky, repeat, description, enabled, onPress, onRefused) {
     Text(label, color = if (active) Rex.accent else Rex.text, fontFamily = Rex.mono, fontSize = 13.sp)
 }
 
 @Composable
 private fun KeyCap(
     active: Boolean = false,
+    sticky: Boolean = false,
     repeat: Boolean = false,
     description: String? = null,
     enabled: Boolean = true,
     onPress: () -> Unit,
+    onRefused: () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val press by rememberUpdatedState(onPress)
+    val refused by rememberUpdatedState(onRefused)
+    val touch = Modifier
+        // One key to a screen reader, its label and state together.
+        .semantics(mergeDescendants = true) {
+            description?.let { contentDescription = it }
+            // A held modifier is a switch, on until the next key uses it.
+            if (sticky) {
+                role = Role.Switch
+                toggleableState = ToggleableState(active)
+            } else role = Role.Button
+            if (!enabled) disabled()
+            onClick { if (enabled) press(); enabled }
+        }
+        .pointerInput(repeat, enabled) {
+            // A dimmed key sends nothing, and says so.
+            if (!enabled) return@pointerInput detectTapGestures(onTap = { refused() })
+            // Whether this touch's hold has started repeating, so its release doesn't press once more.
+            var repeated = false
+            // A key fires on tap, not on touch, so scrolling the bar types nothing.
+            // Holding a repeating key still keeps it going until release.
+            detectTapGestures(
+                onPress = {
+                    pressed = true
+                    repeated = false
+                    val job = if (repeat) scope.launch {
+                        delay(400)
+                        repeated = true
+                        while (true) {
+                            press()
+                            delay(55)
+                        }
+                    } else null
+                    // Also when the key is disabled mid-hold, which cancels this gesture.
+                    try {
+                        tryAwaitRelease()
+                    } finally {
+                        job?.cancel()
+                        pressed = false
+                    }
+                },
+                onTap = { if (!repeated) press() },
+            )
+        }
+    // Drawn to fit the bar, and taking touches over the bar's height and the gaps beside it.
     Box(
-        Modifier.height(38.dp).widthIn(min = 42.dp).alpha(if (enabled) 1f else 0.4f).clip(RoundedCornerShape(9.dp))
+        Modifier.reaching(touch)
+            .height(38.dp).widthIn(min = 42.dp).alpha(if (enabled) 1f else 0.4f).clip(RoundedCornerShape(9.dp))
             .background(if (active || pressed) Rex.keyActive else Rex.keyBg)
             .border(0.5.dp, if (active) Rex.accent else Color.Transparent, RoundedCornerShape(9.dp))
-            .semantics {
-                description?.let { contentDescription = it }
-                role = Role.Button
-                if (!enabled) disabled()
-                onClick { if (enabled) press(); enabled }
-            }
-            .pointerInput(repeat, enabled) {
-                if (!enabled) return@pointerInput
-                // Whether this touch's hold has started repeating, so its release doesn't press once more.
-                var repeated = false
-                // A key fires on tap, not on touch, so scrolling the bar types nothing.
-                // Holding a repeating key still keeps it going until release.
-                detectTapGestures(
-                    onPress = {
-                        pressed = true
-                        repeated = false
-                        val job = if (repeat) scope.launch {
-                            delay(400)
-                            repeated = true
-                            while (true) {
-                                press()
-                                delay(55)
-                            }
-                        } else null
-                        // Also when the key is disabled mid-hold, which cancels this gesture.
-                        try {
-                            tryAwaitRelease()
-                        } finally {
-                            job?.cancel()
-                            pressed = false
-                        }
-                    },
-                    onTap = { if (!repeated) press() },
-                )
-            }
             .padding(horizontal = 11.dp),
         contentAlignment = Alignment.Center,
     ) { content() }

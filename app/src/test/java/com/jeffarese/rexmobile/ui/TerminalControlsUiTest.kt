@@ -1,6 +1,8 @@
 package com.jeffarese.rexmobile.ui
 
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
+import android.view.View
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -15,6 +17,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.click
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
@@ -47,6 +52,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /** Records what the controls send, in place of a terminal. */
@@ -438,5 +444,92 @@ class TerminalControlsUiTest {
         rule.onNodeWithText("Banana").performClick()
         rule.onNodeWithText("Submit").performClick()
         assertEquals(listOf("Banana", "Submit"), chosen)
+    }
+
+    @Test
+    fun stickyModifiersSayWhetherTheyAreOn() {
+        rule.setContent { RexTheme { KeyBar(controls, directTyping = false, onPaste = {}, onToggleTyping = {}) } }
+        val ctrl = rule.onNodeWithText("ctrl").performScrollTo()
+        ctrl.assertIsOff()
+        ctrl.performClick()
+        ctrl.assertIsOn()
+        // Used up by the next key.
+        rule.onNodeWithText("/").performScrollTo().performClick()
+        ctrl.assertIsOff()
+    }
+
+    @Test
+    fun smallControlsTakeTouchesOverAButtonsSizeInTheirOwnRoom() {
+        val commands = mutableListOf<String>()
+        rule.setContent {
+            RexTheme {
+                Column {
+                    Box(Modifier.testTag("strip")) {
+                        ClaudeBar(mode = "plan mode", effort = "medium", onCycleMode = {}, onEffort = {}, onCommand = { commands += it })
+                    }
+                    Box(Modifier.testTag("bar")) { KeyBar(controls, directTyping = false, onPaste = {}, onToggleTyping = {}) }
+                }
+            }
+        }
+        fun bounds(tag: String) = rule.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+        // The strip and the bar are as tall as they were.
+        assertEquals(40f, bounds("strip").let { it.bottom - it.top }.value, 0.5f)
+        assertEquals(48f, bounds("bar").let { it.bottom - it.top }.value, 0.5f)
+        // Their chips and keys take touches over 48 dp each way.
+        for (node in listOf(rule.onNodeWithText("plan"), rule.onNodeWithText("/compact"), rule.onNodeWithText("esc"))) {
+            val b = node.getUnclippedBoundsInRoot()
+            assertTrue("$b is too small to touch", b.right - b.left >= 47.5.dp && b.bottom - b.top >= 47.5.dp)
+        }
+        // A tap at the top of the bar, above the key as drawn, still presses it.
+        val esc = rule.onNodeWithText("esc").getUnclippedBoundsInRoot()
+        val top = bounds("bar").top
+        rule.onRoot().performTouchInput { click(Offset(((esc.left + esc.right) / 2).toPx(), (top + 1.dp).toPx())) }
+        assertEquals(listOf("key ${KeyEvent.KEYCODE_ESCAPE}"), sink.sent)
+        assertEquals(emptyList<String>(), commands)
+    }
+
+    @Test
+    fun keysTapAsAKeyboardDoesAndDimmedOnesRefuse() {
+        lateinit var view: View
+        var enabled by mutableStateOf(true)
+        rule.setContent {
+            view = LocalView.current
+            RexTheme {
+                Column {
+                    KeyBar(controls, directTyping = false, onPaste = {}, onToggleTyping = {}, enabled = enabled)
+                    Composer(TextFieldValue("ls"), {}, hint = "", working = false, controls = controls, onSend = {}, enabled = enabled)
+                }
+            }
+        }
+        rule.onNodeWithText("esc").performClick()
+        assertEquals(HapticFeedbackConstants.KEYBOARD_TAP, shadowOf(view).lastHapticFeedbackPerformed())
+
+        // Dimmed, a key or Send sends nothing, and the tap says so.
+        enabled = false
+        rule.waitForIdle()
+        rule.onNodeWithText("^C").performClick()
+        assertEquals(HapticFeedbackConstants.REJECT, shadowOf(view).lastHapticFeedbackPerformed())
+        enabled = true
+        rule.onNodeWithText("esc").performClick()
+        enabled = false
+        rule.onNodeWithContentDescription("Send").performClick()
+        assertEquals(HapticFeedbackConstants.REJECT, shadowOf(view).lastHapticFeedbackPerformed())
+        assertEquals(List(2) { "key ${KeyEvent.KEYCODE_ESCAPE}" }, sink.sent)
+    }
+
+    @Test
+    fun keysFollowTheHapticsSetting() {
+        lateinit var view: View
+        rule.setContent {
+            view = LocalView.current
+            // As HapticsFromSettings does with the setting off.
+            CompositionLocalProvider(LocalHapticFeedback provides NoHaptics) {
+                RexTheme { KeyBar(controls, directTyping = false, onPaste = {}, onToggleTyping = {}) }
+            }
+        }
+        val before = shadowOf(view).lastHapticFeedbackPerformed()
+        rule.onNodeWithText("esc").performClick()
+        assertEquals(listOf("key ${KeyEvent.KEYCODE_ESCAPE}"), sink.sent)
+        assertEquals(before, shadowOf(view).lastHapticFeedbackPerformed())
     }
 }

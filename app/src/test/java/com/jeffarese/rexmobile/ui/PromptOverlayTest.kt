@@ -1,5 +1,7 @@
 package com.jeffarese.rexmobile.ui
 
+import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +13,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.click
@@ -33,6 +38,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /** The prompt card over the terminal: when it shows, and which taps answer. */
@@ -43,6 +49,7 @@ class PromptOverlayTest {
 
     private val chosen = mutableListOf<String>()
     private var underTaps = 0
+    private lateinit var view: View
 
     private fun permission(command: String) = ScreenPrompt(
         ScreenPrompt.Kind.MENU, "Do you want to proceed?",
@@ -87,6 +94,7 @@ class PromptOverlayTest {
     /** The overlay over a stand-in for the terminal, which counts the taps that reach it. */
     private fun show(info: MutableState<ScreenInfo>, live: () -> Boolean = { true }, blocked: String? = null) {
         rule.setContent {
+            view = LocalView.current
             RexTheme {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { underTaps++ } })
@@ -102,6 +110,21 @@ class PromptOverlayTest {
         }
         // A card that just came up ignores taps for a moment.
         rule.mainClock.advanceTimeBy(600)
+    }
+
+    @Test
+    fun aCardSaysItsQuestionAsItComesUpAndAnAnswerConfirms() {
+        val info = mutableStateOf(ScreenInfo(prompt = permission("date")))
+        show(info)
+        // A screen reader says a pane's title as it appears.
+        rule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Do you want to proceed?")).assertExists()
+        rule.onNodeWithText("Yes").performClick()
+        assertEquals(listOf("Yes"), chosen)
+        assertEquals(HapticFeedbackConstants.CONFIRM, shadowOf(view).lastHapticFeedbackPerformed())
+
+        info.value = ScreenInfo(prompt = claude(tab = 0, multi = false))
+        rule.mainClock.advanceTimeBy(600)
+        rule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Which colour do you prefer?")).assertExists()
     }
 
     @Test

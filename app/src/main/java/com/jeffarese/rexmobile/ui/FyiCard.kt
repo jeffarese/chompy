@@ -46,6 +46,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -104,6 +106,8 @@ fun FyiCard(
             .clip(FyiShape)
             .background(Rex.surface)
             .border(0.5.dp, FyiAccent.copy(alpha = 0.35f), FyiShape)
+            // Screen readers say the note's headline as the card comes up, and again once it is read.
+            .semantics { paneTitle = note.headline?.let { "Note from Claude: $it" } ?: "Note from Claude" }
             .padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +37,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -319,19 +322,21 @@ fun CommandPanel(suggestions: List<Suggestion>, sendEnabled: Boolean, onPick: (S
     ) {
         Text("Commands", color = Rex.textDim, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            suggestions.forEach { s -> SuggestionChip(s, sendEnabled, onPick) }
+            // Rows a few dp apart leave no room around a chip to reach into.
+            suggestions.forEach { s -> SuggestionChip(s, sendEnabled, onPick, reach = false) }
         }
     }
 }
 
 /** A suggestion to tap. Unless [sendEnabled], one that sends at once is dimmed and does nothing. */
 @Composable
-private fun SuggestionChip(s: Suggestion, sendEnabled: Boolean, onPick: (Suggestion) -> Unit) {
+private fun SuggestionChip(s: Suggestion, sendEnabled: Boolean, onPick: (Suggestion) -> Unit, reach: Boolean = true) {
     val haptic = LocalHapticFeedback.current
     Chip(
         onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onPick(s) },
         highlight = s.send,
         enabled = sendEnabled || !s.send,
+        reach = reach,
     ) {
         Text(
             s.label, color = Rex.text, fontSize = 12.sp, maxLines = 1,
@@ -352,9 +357,12 @@ private fun StripRow(expanded: Boolean, onExpand: (() -> Unit)?, content: @Compo
         )
         if (onExpand != null) {
             Box(Modifier.width(0.5.dp).height(22.dp).background(Rex.divider))
+            val interaction = remember { MutableInteractionSource() }
             Box(
-                Modifier.size(40.dp).clickable(role = Role.Button, onClick = onExpand)
-                    .semantics { contentDescription = if (expanded) "Hide all commands" else "Show all commands" },
+                Modifier.reaching(
+                    Modifier.clickable(interaction, indication = null, role = Role.Button, onClick = onExpand)
+                        .semantics { contentDescription = if (expanded) "Hide all commands" else "Show all commands" },
+                ).size(40.dp).indication(interaction, ripple()),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -374,10 +382,17 @@ private fun Chip(
     enabled: Boolean = true,
     /** A color the chip takes on, faintly, to stand apart from the commands. */
     tint: Color? = null,
+    /** Whether it takes touches over a button's size, beyond what is drawn, as in a strip. */
+    reach: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) {
+    // Drawn small, and taking touches over a button's size; the press shows on the chip.
+    val interaction = remember { MutableInteractionSource() }
+    val touch = Modifier.clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+        .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier)
     Row(
-        Modifier.height(30.dp).alpha(if (enabled) 1f else 0.4f).clip(RoundedCornerShape(50))
+        (if (reach) Modifier.reaching(touch) else touch)
+            .height(30.dp).alpha(if (enabled) 1f else 0.4f).clip(RoundedCornerShape(50))
             .background(
                 when {
                     tint != null -> tint.copy(alpha = 0.14f)
@@ -394,8 +409,7 @@ private fun Chip(
                 },
                 RoundedCornerShape(50),
             )
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier)
+            .indication(interaction, ripple())
             .padding(horizontal = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

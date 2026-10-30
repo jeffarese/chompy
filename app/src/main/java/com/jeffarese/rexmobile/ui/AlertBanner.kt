@@ -35,7 +35,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.dismiss
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -46,7 +51,10 @@ import com.jeffarese.rexmobile.model.AppModel
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
-/** A banner at the top for agents that finish or need you, wherever you are in the app. Swipe it up to dismiss it. */
+/**
+ * A banner at the top for agents that finish or need you, wherever you are in the app. Swipe it up to
+ * dismiss it. Screen readers say it once they are done speaking, and offer to dismiss it.
+ */
 @Composable
 fun AlertBanner(model: AppModel, onOpen: (Target) -> Unit) {
     var current by remember { mutableStateOf<Alert?>(null) }
@@ -77,9 +85,11 @@ fun AlertBanner(model: AppModel, onOpen: (Target) -> Unit) {
             }
         }
     }
+    val accessibility = LocalAccessibilityManager.current
     LaunchedEffect(shownAt) {
         if (current != null) {
-            delay(6000)
+            // Longer for someone who has asked Android for more time to act on what shows.
+            delay(accessibility?.calculateRecommendedTimeoutMillis(BANNER_MS, containsIcons = true, containsText = true, containsControls = true) ?: BANNER_MS)
             current = null
         }
     }
@@ -103,6 +113,13 @@ fun AlertBanner(model: AppModel, onOpen: (Target) -> Unit) {
                 if (win != null) onOpen(Target(alert.hostId, alert.sessionId, win.windowId, alert.blockId))
             },
             modifier = Modifier.statusBarsPadding()
+                .semantics {
+                    liveRegion = LiveRegionMode.Polite
+                    dismiss("Dismiss") {
+                        current = null
+                        true
+                    }
+                }
                 .offset { IntOffset(0, dragY.roundToInt()) }
                 .draggable(
                     orientation = Orientation.Vertical,
@@ -116,6 +133,9 @@ fun AlertBanner(model: AppModel, onOpen: (Target) -> Unit) {
         )
     }
 }
+
+/** How long the banner stays up, unless the user has asked for longer. */
+private const val BANNER_MS = 6000L
 
 /**
  * What the banner shows, laid out like an agent's card on Home: the program's icon with a dot in the colour of what

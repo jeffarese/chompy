@@ -53,6 +53,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -65,6 +66,7 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -98,17 +100,25 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.HorizontalAlignmentLine
+import androidx.compose.ui.layout.VerticalAlignmentLine
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -133,6 +143,7 @@ import com.jeffarese.rexmobile.terminal.ScreenPrompt
 import com.jeffarese.rexmobile.terminal.TerminalViewport
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.max
+import kotlin.math.min
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -873,7 +884,7 @@ internal fun BottomOverlay(
     onReadFyi: () -> Unit = {},
 ) {
     val prompt = info.value.prompt?.takeIf { live }
-    val haptic = LocalHapticFeedback.current
+    val haptics = rememberViewHaptics()
     // Claude's note shows when no prompt does. The same note opened or scrolled is the same card; a
     // new one opens again, and new buttons wait a moment, as Claude ignores their digits at first.
     val fyi = info.value.fyi?.takeIf { live && prompt == null }
@@ -940,9 +951,12 @@ internal fun BottomOverlay(
             scrolledBack(), enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut(),
             modifier = Modifier.align(Alignment.End),
         ) {
+            val interaction = remember { MutableInteractionSource() }
             Box(
-                Modifier.keepTapsOffTerminal().padding(end = 12.dp, bottom = 8.dp).size(42.dp).shadow(6.dp, CircleShape).clip(CircleShape)
-                    .background(Rex.surfaceHigh).border(0.5.dp, Rex.divider, CircleShape).clickable(onClick = onJump),
+                Modifier.keepTapsOffTerminal().padding(end = 12.dp, bottom = 8.dp)
+                    .reaching(Modifier.clickable(interaction, indication = null, role = Role.Button, onClick = onJump))
+                    .size(42.dp).shadow(6.dp, CircleShape).clip(CircleShape)
+                    .background(Rex.surfaceHigh).border(0.5.dp, Rex.divider, CircleShape).indication(interaction, ripple()),
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Outlined.ArrowDownward, "Jump to the bottom", tint = Rex.text, modifier = Modifier.size(20.dp)) }
         }
@@ -952,7 +966,7 @@ internal fun BottomOverlay(
                 fun live() = ready && answered == null && info.value.prompt == p
                 val choose: (PromptOption) -> Unit = choose@{ option ->
                     if (!live()) return@choose
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.confirm()
                     if (!(p.multiSelect && option.checked != null)) answered = p
                     onChoose(p, option)
                 }
@@ -967,7 +981,7 @@ internal fun BottomOverlay(
                         // A single choice is answered with it; in a multi-select question it is one more tick.
                         onOwn = own@{ text ->
                             if (!live()) return@own
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptics.confirm()
                             if (!p.multiSelect) answered = p
                             onOwn(p, text)
                         },
@@ -989,7 +1003,7 @@ internal fun BottomOverlay(
                         // Only the note the screen still shows, once Claude takes its digits, one press at a time.
                         val now = info.value.fyi ?: return@press
                         if (!fyiReady || fyiPressed != null || fyiBlocked != null || !now.sameNote(n)) return@press
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        haptics.confirm()
                         fyiPressed = now to action
                         onFyi(now, action)
                     },
@@ -1134,6 +1148,42 @@ internal fun Modifier.reachingTap(drawn: Dp, onClickLabel: String, onClick: () -
         .indication(interaction, ripple())
 }
 
+/** The size a touch target should have at least, each way, as Android's accessibility guidelines ask. */
+internal val TOUCH_MIN = 48.dp
+
+/**
+ * Takes touches over at least [TOUCH_MIN] each way, centred on what is drawn, without taking more room:
+ * [touch], such as a click and its semantics, gets the larger area, and the reach is put over the
+ * neighbours. What follows in the chain is what is drawn, where a press should show.
+ */
+internal fun Modifier.reaching(touch: Modifier): Modifier =
+    zIndex(1f)
+        .layout { measurable, constraints ->
+            val p = measurable.measure(constraints.loosenedBy(TOUCH_MIN.roundToPx()))
+            // The drawn size, which the touch area passes out, so this takes only that room.
+            val w = p[DrawnWidth].takeIf { it != AlignmentLine.Unspecified } ?: p.width
+            val h = p[DrawnHeight].takeIf { it != AlignmentLine.Unspecified } ?: p.height
+            layout(w, h) { p.place((w - p.width) / 2, (h - p.height) / 2) }
+        }
+        .then(touch)
+        .layout { measurable, constraints ->
+            val reach = TOUCH_MIN.roundToPx()
+            val p = measurable.measure(constraints.loosenedBy(-reach))
+            val w = max(p.width, reach)
+            val h = max(p.height, reach)
+            layout(w, h, mapOf(DrawnWidth to p.width, DrawnHeight to p.height)) { p.place((w - p.width) / 2, (h - p.height) / 2) }
+        }
+
+/** What [reaching] draws, passed out of its touch area as alignment lines: they carry a size, not a position. */
+private val DrawnWidth = VerticalAlignmentLine { a, b -> min(a, b) }
+private val DrawnHeight = HorizontalAlignmentLine { a, b -> min(a, b) }
+
+/** These constraints with [by] more room at most, each way, where they have a limit. */
+private fun Constraints.loosenedBy(by: Int) = copy(
+    maxWidth = if (hasBoundedWidth) maxWidth + by else maxWidth,
+    maxHeight = if (hasBoundedHeight) maxHeight + by else maxHeight,
+)
+
 /** The text of the rows shown from [topRow], as the screen has them. */
 private fun visibleText(terminal: RemoteTerminal, topRow: Int): String {
     val emu = terminal.session.emulator ?: return ""
@@ -1161,11 +1211,25 @@ private fun WindowTabs(windows: List<WindowView>, selected: String?, metas: Map<
             val meta = bid?.let { metas[it] }
             val isSel = w.windowId == selected
             val unseen = !isSel && w.blocks.any { metas[it.blockId]?.unseen == true }
+            val st = meta?.status?.state
+            val interaction = remember { MutableInteractionSource() }
             Row(
-                Modifier.clip(RoundedCornerShape(10.dp))
+                Modifier
+                    .reaching(
+                        Modifier.selectable(isSel, interaction, indication = null, role = Role.Tab) { onSelect(w.windowId) }
+                            // What the dots after the title show, which screen readers can't see.
+                            .semantics {
+                                when {
+                                    st == "working" -> stateDescription = "Working"
+                                    st == "blocked" -> stateDescription = "Needs you"
+                                    unseen -> stateDescription = "New output"
+                                }
+                            },
+                    )
+                    .clip(RoundedCornerShape(10.dp))
                     .background(if (isSel) Rex.surfaceHigh else Color.Transparent)
                     .border(0.5.dp, if (isSel) Rex.divider else Color.Transparent, RoundedCornerShape(10.dp))
-                    .clickable { onSelect(w.windowId) }
+                    .indication(interaction, ripple())
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1175,7 +1239,6 @@ private fun WindowTabs(windows: List<WindowView>, selected: String?, metas: Map<
                     windowTitle(w, meta), color = if (isSel) Rex.text else Rex.textDim, fontSize = 13.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 160.dp),
                 )
-                val st = meta?.status?.state
                 if (st == "working") WorkingDots(Modifier.padding(start = 6.dp))
                 else if (st == "blocked") Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Rex.blocked))
                 else if (unseen) Box(Modifier.padding(start = 6.dp).size(7.dp).clip(CircleShape).background(Rex.unseen))
@@ -1228,11 +1291,11 @@ private fun PaneStrip(win: WindowView, selected: String?, metas: Map<String, Blo
             placed.forEach { (id, _) ->
                 val m = metas[id]
                 val isSel = id == selected
-                // The chip is drawn small, and taken a button's height of taps; the press shows on the chip.
+                // The chip is drawn small in a button's height, and takes taps beyond it; the press shows on the chip.
                 val interaction = remember { MutableInteractionSource() }
                 Row(
-                    Modifier.heightIn(min = TAP_MIN).clickable(interaction, indication = null) { onSelect(id) }
-                        .wrapContentHeight()
+                    Modifier.heightIn(min = TAP_MIN).wrapContentHeight()
+                        .reaching(Modifier.selectable(isSel, interaction, indication = null, role = Role.Tab) { onSelect(id) })
                         .clip(RoundedCornerShape(50))
                         .background(if (isSel) Rex.accentSoft else Rex.surface)
                         .indication(interaction, ripple())

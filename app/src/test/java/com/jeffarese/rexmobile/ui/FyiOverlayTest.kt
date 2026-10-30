@@ -11,6 +11,9 @@ import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -62,6 +65,16 @@ class FyiOverlayTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun aScreenReaderSaysTheNoteAsItComesUp() {
+        show(mutableStateOf(ScreenInfo(claudeInput = "", fyi = offer)))
+        rule.onNode(
+            SemanticsMatcher("its pane title has the headline") { n ->
+                n.config.getOrNull(SemanticsProperties.PaneTitle)?.let { it.startsWith("Note from Claude") && headline in it } == true
+            },
+        ).assertExists()
     }
 
     @Test

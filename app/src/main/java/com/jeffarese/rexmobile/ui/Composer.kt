@@ -3,6 +3,7 @@ package com.jeffarese.rexmobile.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
@@ -40,6 +41,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
@@ -81,6 +83,7 @@ fun Composer(
     focusRequester: FocusRequester? = null,
 ) {
     val haptic = LocalHapticFeedback.current
+    val haptics = rememberViewHaptics()
     // Once Back has put the keyboard away, the box lets go of focus, so its cursor stops blinking.
     // The keyboard briefly hides when another view takes it over, so only a hide that lasts counts.
     val focusManager = LocalFocusManager.current
@@ -146,7 +149,9 @@ fun Composer(
                 .clickable(enabled = !held) {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     if (stop) controls.interrupt() else onSend(text)
-                },
+                }
+                // Held, a tap sends nothing, and says so.
+                .pointerInput(held) { if (held) detectTapGestures { haptics.reject() } },
             contentAlignment = Alignment.Center,
         ) {
             when {
