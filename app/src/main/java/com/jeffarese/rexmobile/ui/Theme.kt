@@ -12,7 +12,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import com.jeffarese.rexmobile.model.RexTheme
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -47,9 +49,56 @@ data class Palette(
     /** For text on [blocked]: amber is bright in a dark theme and deep in a light one. */
     val onBlocked get() = if (dark) Color.Black else Color.White
 
+    // Claude Code's permission modes, in the colors its footer uses: its dark theme's, or its light theme's on a light
+    // palette, where the dark theme's pale ones read at about 2.5:1.
+    val planMode = modeColor(if (dark) Color(0xFF48B0A2) else Color(0xFF006666))
+    val acceptEdits = modeColor(if (dark) Color(0xFFAF87FF) else Color(0xFF8700FF))
+    val bypassMode = modeColor(if (dark) Color(0xFFFF6B80) else Color(0xFFAB2B3F))
+
+    /** [color] as text on this palette's cards and canvas: as it is if it reads at [ratio] there, else nearer [text]. */
+    fun readable(color: Color, ratio: Float = READABLE) = legible(color, text, listOf(bg, surface), ratio)
+
+    /** A mode's [color], readable also where the Claude strip shows it: on a card washed with 14% of the color. */
+    private fun modeColor(color: Color) = closest(color, text) { c ->
+        contrastOn(c, listOf(bg, surface, c.copy(alpha = 0.14f).compositeOver(surface))) >= READABLE
+    }
+
     // Here rather than at the top level, whose class also holds what reads Rex.mono: Rex starting up would wait on itself.
     companion object {
-        /** The app's own look, from before it had themes. */
+        /** The contrast text needs to be read with ease, as WCAG puts it: the least any text here has. */
+        const val READABLE = 4.5f
+
+        /** How much more [textDim] stands out than [textFaint] at least, so the two still look different. */
+        const val DIM_OVER_FAINT = 1.25f
+
+        /** WCAG's contrast ratio of two opaque colors: 1 for the same, 21 for black on white. */
+        fun contrast(a: Color, b: Color): Float {
+            val (la, lb) = a.luminance() to b.luminance()
+            return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
+        }
+
+        /** [color]'s contrast on the one of [on] it stands out least from. */
+        fun contrastOn(color: Color, on: List<Color>) = on.minOf { contrast(color, it) }
+
+        /**
+         * [color] if it reads at [ratio] on each of [on], else the shade of it closest to it, on the way to [toward],
+         * that does: a grey too faint on a dark canvas gets lighter, one on a light canvas darker.
+         */
+        fun legible(color: Color, toward: Color, on: List<Color>, ratio: Float = READABLE) =
+            closest(color, toward) { contrastOn(it, on) >= ratio }
+
+        /** [color] if it [reads], else the shade closest to it, on the way to [toward], that does. */
+        fun closest(color: Color, toward: Color, reads: (Color) -> Boolean): Color {
+            if (reads(color)) return color
+            var (short, enough) = 0f to 1f
+            repeat(20) {
+                val f = (short + enough) / 2
+                if (reads(lerp(color, toward, f))) enough = f else short = f
+            }
+            return lerp(color, toward, enough)
+        }
+
+        /** The app's own look, from before it had themes, with its faint text brought up to [READABLE]. */
         val Default = Palette(
             dark = true,
             bg = Color(0xFF0E0E12),
@@ -57,8 +106,8 @@ data class Palette(
             surfaceHigh = Color(0xFF24242D),
             divider = Color(0xFF2C2C36),
             text = Color(0xFFF2F2F7),
-            textDim = Color(0xFF8E8E9A),
-            textFaint = Color(0xFF5E5E6A),
+            textDim = Color(0xFF9494A0),
+            textFaint = Color(0xFF82828D),
             accent = Color(0xFFFF6A3D),
             onAccent = Color.White,
             unseen = Color(0xFF3B8BFF),
@@ -82,15 +131,21 @@ fun paletteOf(theme: RexTheme): Palette {
     val bg = c("canvas")
     val text = c("content")
     fun step(f: Float) = lerp(bg, text, if (theme.dark) f else f * 0.8f)
+    val surface = step(0.055f)
+    // Rex's tertiary text reads at about 3:1, too faint for the times, folders and subtasks it carries here. It is
+    // brought up to READABLE, and the secondary kept a step above it.
+    val cards = listOf(bg, surface)
+    val faint = Palette.legible(c("contentTertiary"), text, cards)
+    val dim = Palette.legible(c("contentSecondary"), text, cards, Palette.contrastOn(faint, cards) * Palette.DIM_OVER_FAINT)
     return Palette(
         dark = theme.dark,
         bg = bg,
-        surface = step(0.055f),
+        surface = surface,
         surfaceHigh = step(0.1f),
         divider = c("strokeSubtle"),
         text = text,
-        textDim = c("contentSecondary"),
-        textFaint = c("contentTertiary"),
+        textDim = dim,
+        textFaint = faint,
         accent = c("accent"),
         onAccent = c("accentOnSolid"),
         unseen = c("info"),
@@ -136,10 +191,10 @@ object Rex {
     val keyBg get() = palette.keyBg
     val keyActive get() = palette.keyActive
 
-    // Claude Code's permission modes, in the colors its footer uses.
-    val planMode = Color(0xFF48B0A2)
-    val acceptEdits = Color(0xFFAF87FF)
-    val bypassMode = Color(0xFFFF6B80)
+    // Claude Code's permission modes, in the colors its footer uses, readable on the palette's cards.
+    val planMode get() = palette.planMode
+    val acceptEdits get() = palette.acceptEdits
+    val bypassMode get() = palette.bypassMode
 
     /** With the symbol fonts as fallbacks, from [RexFonts], once the app has built them. */
     val mono: FontFamily by lazy { RexFonts.monoFamily() }

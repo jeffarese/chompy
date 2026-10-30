@@ -54,9 +54,13 @@ import com.jeffarese.rexmobile.terminal.FyiAction
 import com.jeffarese.rexmobile.terminal.FyiLine
 import com.jeffarese.rexmobile.terminal.FyiNote
 
-/** Claude Code's colour for the ✦ of its notes and their buttons' digits. */
-internal val FyiAccent = Color(0xFFB1B9F9)
-private val FyiInk = Color(0xFF16162A)
+/**
+ * Claude Code's colour for the ✦ of its notes and their buttons' digits: its dark theme's, or its light theme's on a
+ * light palette, where the pale one reads at under 2:1. Its tag is small text, so either is made readable there.
+ */
+internal val FyiAccent: Color get() = Rex.palette.let { it.readable(if (it.dark) Color(0xFFB1B9F9) else Color(0xFF5769F7)) }
+/** For text on [FyiAccent]: dark ink on the pale one, white on the deep one. */
+private val FyiInk: Color get() = if (Rex.palette.dark) Color(0xFF16162A) else Color.White
 private val FyiShape = RoundedCornerShape(18.dp)
 
 /** The height the card may take even past its share of a short terminal, as with the keyboard up: room for two rows of buttons. */
