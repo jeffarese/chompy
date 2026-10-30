@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -32,6 +34,7 @@ import com.jeffarese.rexmobile.terminal.ScreenPrompt
 class Notifier(private val context: Context, now: () -> Long = SystemClock::elapsedRealtime) {
     private val manager = NotificationManagerCompat.from(context)
     private val pacer = AlertPacer(now)
+    private val main = Handler(Looper.getMainLooper())
 
     init {
         val system = context.getSystemService(NotificationManager::class.java)
@@ -116,7 +119,11 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
             PanePrompts.Answer.ANSWERED -> {
                 // Claude asking again soon after is news, not an agent flipping between states.
                 pacer.forget(tap.prompt.blockId)
-                update(tap, "Answered: ${tap.option.label}", timeoutMs = ANSWERED_SHOWN_MS)
+                update(tap, "Answered: ${tap.option.label}")
+                // Gone after a moment, unless a newer alert for the pane has taken its place, such as Claude
+                // finishing soon after. Android's own timeout would take that away too: it cancels whatever
+                // the pane's notification is by then.
+                main.postDelayed({ if (showing(tap.prompt)) manager.cancel(tap.prompt.blockId, ALERT_ID) }, ANSWERED_SHOWN_MS)
             }
             PanePrompts.Answer.UNCONFIRMED -> update(tap, "Sent ${tap.option.label}, but Claude didn't seem to take it. Tap to check.")
             PanePrompts.Answer.CHANGED -> update(tap, "Not answered: the screen has changed since. Tap to open it.")
@@ -130,11 +137,9 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
      * Show [text] in place of [tap]'s question, quietly and without buttons, while the pane's
      * notification is still the one tapped: a newer alert for the pane has replaced it otherwise.
      */
-    private fun update(tap: AnswerTap, text: String, timeoutMs: Long? = null) {
+    private fun update(tap: AnswerTap, text: String) {
         val p = tap.prompt
-        val showing = runCatching { manager.activeNotifications }.getOrDefault(emptyList())
-            .any { it.tag == p.blockId && it.id == ALERT_ID && it.notification.extras.getLong(EXTRA_SEEN_AT) == p.seenAt }
-        if (!showing) return
+        if (!showing(p)) return
         val notification = NotificationCompat.Builder(context, CHANNEL_NEEDS_YOU)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(tap.title)
@@ -145,10 +150,13 @@ class Notifier(private val context: Context, now: () -> Long = SystemClock::elap
             .setSilent(true)
             .setContentIntent(openPane(p.hostId, p.sessionId, p.blockId))
             .addExtras(bundleOf(EXTRA_SEEN_AT to p.seenAt))
-            .apply { if (timeoutMs != null) setTimeoutAfter(timeoutMs) }
             .build()
         runCatching { manager.notify(p.blockId, ALERT_ID, notification) }
     }
+
+    /** Whether the pane's notification is still the one that offered [p], or what an answer to it made of it. */
+    private fun showing(p: PanePrompt) = runCatching { manager.activeNotifications }.getOrDefault(emptyList())
+        .any { it.tag == p.blockId && it.id == ALERT_ID && it.notification.extras.getLong(EXTRA_SEEN_AT) == p.seenAt }
 
     /** The pane's notification, once the user has seen the pane. */
     fun cancel(blockId: String) {

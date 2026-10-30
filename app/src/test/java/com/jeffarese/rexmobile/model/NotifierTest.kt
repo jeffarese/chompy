@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.test.core.app.ApplicationProvider
 import com.jeffarese.rexmobile.AnswerReceiver
@@ -19,6 +20,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.time.Duration
 
 /** The notifications' channels, how a pane's alerts are spaced out, and a prompt's buttons. */
 @RunWith(RobolectricTestRunner::class)
@@ -152,19 +154,26 @@ class NotifierTest {
         assertEquals("Answering: Yes…", text("b1"))
         assertEquals(0, posted("b1").actions?.size ?: 0)
         assertTrue(posted("b1").quiet)
-        notifier.answered(tap, PanePrompts.Answer.ANSWERED)
-        assertEquals("Answered: Yes", text("b1"))
-        assertTrue(posted("b1").timeoutAfter > 0)
-
         notifier.answered(tap, PanePrompts.Answer.CHANGED)
         assertEquals("Not answered: the screen has changed since. Tap to open it.", text("b1"))
         notifier.answered(tap, PanePrompts.Answer.UNREACHABLE)
         assertEquals("Not answered: couldn't reach mac. Tap to open it.", text("b1"))
 
-        // A newer alert for the pane has taken its place: it stays.
-        notifier.post(alert("b1", Alert.Kind.DONE), "mac")
+        // Taken, it says so for a moment, then goes.
         notifier.answered(tap, PanePrompts.Answer.ANSWERED)
+        assertEquals("Answered: Yes", text("b1"))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
+        assertNull(shadowOf(system).getNotification("b1", Notifier.ALERT_ID))
+
+        // Claude finishing meanwhile stays: its alert has taken the answer's place.
+        notifier.post(alert("b1", Alert.Kind.BLOCKED), "mac", prompt)
+        notifier.answered(tap, PanePrompts.Answer.ANSWERED)
+        notifier.post(alert("b1", Alert.Kind.DONE), "mac")
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(5))
         assertEquals(Notifier.CHANNEL_RESULTS, posted("b1").channelId)
+        assertEquals("Finished", text("b1"))
+        // And how a late answer went leaves it be.
+        notifier.answered(tap, PanePrompts.Answer.CHANGED)
         assertEquals("Finished", text("b1"))
     }
 
