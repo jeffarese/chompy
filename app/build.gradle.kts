@@ -5,6 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("androidx.baselineprofile")
 }
 
 // Hosts to offer on first launch, as "Label=address,Label=address". Kept out of git in
@@ -110,6 +111,14 @@ androidComponents {
     beforeVariants(selector().withBuildType("benchmark")) { it.enableUnitTest = false }
 }
 
+// The app's baseline profile, from the generator in :baselineprofile (scripts/generate-baseline-profile.sh).
+// It is checked in, in src/main/generated/baselineProfiles, so a build needs neither the generator nor a
+// device, and it goes in every build type: the benchmark builds that measure it too.
+baselineProfile {
+    automaticGenerationDuringBuild = false
+    mergeIntoMain = true
+}
+
 // The font's and the terminal engine's licenses ship inside the app, for Settings' open-source licenses page.
 val licenseAssets = layout.buildDirectory.dir("generated/licenseAssets")
 val copyLicenses by tasks.registering(Copy::class) {
@@ -141,6 +150,10 @@ dependencies {
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // 1.3, which Compose brings, installs no profile on Android 15 or later; 1.4 does. The updater also
+    // uses its writer to make the profile it installs with an update (Updater.dexMetadata).
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    baselineProfile(project(":baselineprofile"))
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")

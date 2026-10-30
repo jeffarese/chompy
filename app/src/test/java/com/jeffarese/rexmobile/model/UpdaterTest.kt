@@ -1,6 +1,7 @@
 package com.jeffarese.rexmobile.model
 
 import android.content.Context
+import android.content.pm.PackageInstaller
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Finding, downloading and keeping the app's updates, against a fake GitHub. */
 @RunWith(RobolectricTestRunner::class)
@@ -59,10 +61,30 @@ class UpdaterTest {
             .body((body ?: ByteArray(0)).toResponseBody("application/octet-stream".toMediaType())).build()
     }
 
+    /** The profile the updater installs beside the APK, and how many times it was asked for one. */
+    @Volatile private var profile: () -> ByteArray? = { null }
+    private val profilesMade = AtomicInteger()
+
     private fun updater(current: String = "0.3.1") = Updater(
         context, scope, ReleaseFeed("o/r", "", OkHttpClient.Builder().addInterceptor(github).build()),
         currentVersion = current, dir = dir, verify = { problem }, metered = { metered }, clock = { now },
+        makeProfile = { profilesMade.incrementAndGet(); profile() },
     )
+
+    private val sessions get() = context.packageManager.packageInstaller.mySessions
+
+    /** An update downloaded and handed to Android. */
+    private fun installing(): Updater {
+        shadowOf(context.packageManager).setCanRequestPackageInstalls(true)
+        val u = updater()
+        u.check()
+        u.await { it as? UpdateState.Ready }
+        u.install()
+        // Robolectric's installer isn't safe to read while the session is being made: wait, then look.
+        Thread.sleep(500)
+        assertEquals("${u.state.value}", 1, sessions.size)
+        return u
+    }
 
     private fun <T> Updater.await(timeoutMs: Long = 5_000, test: (UpdateState) -> T?): T = runBlocking {
         withTimeout(timeoutMs) { state.first { test(it) != null } }.let { test(it)!! }
@@ -206,6 +228,43 @@ class UpdaterTest {
 
         now += Updater.SNOOZE_MS + 1
         assertNull(updater().snoozed.value)
+    }
+
+    // Robolectric's sessions don't keep what was written to them: that the profile reaches Android is
+    // checked on a device (docs/perf/startup.md). These check that it can never stand in an update's way.
+
+    @Test
+    fun aProfileThatCantBeMadeLeavesTheUpdateAlone() {
+        profile = { throw java.io.IOException("no profile") }
+        val u = installing()
+        assertEquals(1, profilesMade.get())
+        assertTrue("${u.state.value}", u.state.value is UpdateState.Installing)
+    }
+
+    @Test
+    fun anUpdateTurnedDownWithItsProfileIsTriedAgainWithout() {
+        profile = { ByteArray(300) }
+        val u = installing()
+        u.onInstallStatus(PackageInstaller.STATUS_FAILURE_INVALID, "Bad dex metadata", null)
+        Thread.sleep(500)
+        assertEquals(2, sessions.size)
+        assertTrue("${u.state.value}", u.state.value is UpdateState.Installing)
+        // The second try didn't ask for one.
+        assertEquals(1, profilesMade.get())
+
+        // Turned down without one too: that is the update's own problem, and the user sees it.
+        u.onInstallStatus(PackageInstaller.STATUS_FAILURE_INVALID, "Bad APK", null)
+        assertEquals("Bad APK", u.await { it as? UpdateState.Ready }.error)
+    }
+
+    @Test
+    fun anUpdateTheUserTurnsDownIsntTriedAgain() {
+        profile = { ByteArray(300) }
+        val u = installing()
+        u.onInstallStatus(PackageInstaller.STATUS_FAILURE_ABORTED, null, null)
+        assertNull(u.await { it as? UpdateState.Ready }.error)
+        Thread.sleep(200)
+        assertEquals(1, sessions.size)
     }
 
     @Test

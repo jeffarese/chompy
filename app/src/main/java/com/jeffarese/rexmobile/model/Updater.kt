@@ -1,5 +1,6 @@
 package com.jeffarese.rexmobile.model
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -11,6 +12,8 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings as SystemSettings
 import androidx.core.content.pm.PackageInfoCompat
+import androidx.profileinstaller.DeviceProfileWriter
+import androidx.profileinstaller.ProfileInstaller
 import com.jeffarese.rexmobile.BuildConfig
 import com.jeffarese.rexmobile.UpdateReceiver
 import kotlinx.coroutines.CancellationException
@@ -20,7 +23,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /** Where the app's own update is. */
 sealed interface UpdateState {
@@ -59,6 +65,8 @@ class Updater(
     private val verify: (File) -> String? = { checkApk(context, it) },
     private val metered: () -> Boolean = { isMetered(context) },
     private val clock: () -> Long = System::currentTimeMillis,
+    /** The dex metadata file to install beside an APK, or null to install it alone. */
+    private val makeProfile: (File) -> ByteArray? = { dexMetadata(context, it, dir) },
 ) {
     private val prefs = prefs(context)
 
@@ -83,6 +91,8 @@ class Updater(
     @Volatile private var session: Int? = null
     /** Android's confirmation for [session], to show again if the user left the app while it was up. */
     @Volatile private var confirm: Intent? = null
+    /** Whether [session] carries the APK's profile. */
+    @Volatile private var profiled = false
 
     init {
         val saved = prefs.getString(RELEASE, null)?.let(Release::fromJson)
@@ -198,32 +208,59 @@ class Updater(
         confirm = null
         _state.value = UpdateState.Installing(ready.release, ready.apk)
         prefs.edit().putString(INSTALLING, ready.release.version).apply()
-        scope.launch(Dispatchers.IO) {
-            try {
-                val installer = context.packageManager.packageInstaller
-                val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
-                    setAppPackageName(context.packageName)
-                    setSize(ready.apk.length())
-                    setInstallReason(PackageManager.INSTALL_REASON_USER)
-                    if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+        scope.launch(Dispatchers.IO) { startSession(ready.release, ready.apk, withProfile = true) }
+    }
+
+    /**
+     * Write [apk] into an install session and commit it. [withProfile] adds the APK's baseline profile
+     * beside it, as a dex metadata file: ART then compiles the code it names while installing, so the
+     * new version starts as fast as the old one did instead of running interpreted until the phone's
+     * overnight dexopt. The profile is a bonus: if it can't be made or written, the update goes
+     * without it.
+     */
+    private fun startSession(release: Release, apk: File, withProfile: Boolean) {
+        val profile = if (withProfile) runCatching { makeProfile(apk) }.getOrNull() else null
+        try {
+            commit(apk, profile)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (profile != null) startSession(release, apk, withProfile = false)
+            else _state.value = UpdateState.Ready(release, apk, e.message ?: "Couldn't start the update")
+        }
+    }
+
+    private fun commit(apk: File, profile: ByteArray?) {
+        val installer = context.packageManager.packageInstaller
+        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+            setAppPackageName(context.packageName)
+            setSize(apk.length() + (profile?.size ?: 0))
+            setInstallReason(PackageManager.INSTALL_REASON_USER)
+            if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+        }
+        val id = installer.createSession(params)
+        session = id
+        profiled = profile != null
+        try {
+            installer.openSession(id).use { s ->
+                s.openWrite("base.apk", 0, apk.length()).use { out ->
+                    apk.inputStream().use { it.copyTo(out) }
+                    s.fsync(out)
                 }
-                val id = installer.createSession(params)
-                session = id
-                installer.openSession(id).use { s ->
-                    s.openWrite("base.apk", 0, ready.apk.length()).use { out ->
-                        ready.apk.inputStream().use { it.copyTo(out) }
-                        s.fsync(out)
-                    }
-                    val status = Intent(context, UpdateReceiver::class.java).setAction(UpdateReceiver.ACTION_STATUS).setPackage(context.packageName)
-                    // Mutable: Android adds the outcome to it.
-                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
-                    s.commit(PendingIntent.getBroadcast(context, id, status, flags).intentSender)
+                // Android pairs a dex metadata file with the APK of the same name.
+                if (profile != null) s.openWrite("base.dm", 0, profile.size.toLong()).use { out ->
+                    out.write(profile)
+                    s.fsync(out)
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _state.value = UpdateState.Ready(ready.release, ready.apk, e.message ?: "Couldn't start the update")
+                val status = Intent(context, UpdateReceiver::class.java).setAction(UpdateReceiver.ACTION_STATUS).setPackage(context.packageName)
+                // Mutable: Android adds the outcome to it.
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                s.commit(PendingIntent.getBroadcast(context, id, status, flags).intentSender)
             }
+        } catch (e: Exception) {
+            // So a half-written session doesn't keep its copy of the APK until Android clears it.
+            runCatching { installer.abandonSession(id) }
+            throw e
         }
     }
 
@@ -240,6 +277,13 @@ class Updater(
             else -> {
                 session = null
                 confirm = null
+                // Android turned down an update that carried a profile: once more without it, unless the
+                // user said no.
+                if (profiled && status != PackageInstaller.STATUS_FAILURE_ABORTED) {
+                    profiled = false
+                    scope.launch(Dispatchers.IO) { startSession(installing.release, installing.apk, withProfile = false) }
+                    return
+                }
                 prefs.edit().remove(INSTALLING).apply()
                 val error = if (status == PackageInstaller.STATUS_FAILURE_ABORTED) null else installError(status, message)
                 _state.value = UpdateState.Ready(installing.release, installing.apk, error)
@@ -317,6 +361,49 @@ class Updater(
             val ours = signers(installed)
             if (theirs != null && ours != null && theirs != ours) return "The download isn't signed with Chompy's key"
             return null
+        }
+
+        /**
+         * [apk]'s baseline profile as a dex metadata file for this phone, or null where there is none or
+         * it can't be made. It comes from the APK's own assets/dexopt, so it always matches that APK's
+         * code. Those hold it in the one format AGP writes for every Android version; profileinstaller's
+         * writer turns it into the format this phone's ART reads, as it does when an app installs its
+         * profile on first launch, and the result goes in a zip as primary.prof, which is what a dex
+         * metadata file is. [scratch] is a directory to transcode in.
+         */
+        @SuppressLint("RestrictedApi") // Only profileinstaller's writer knows each Android version's format.
+        fun dexMetadata(context: Context, apk: File, scratch: File): ByteArray? {
+            // Android installs dex metadata from version 9.
+            if (Build.VERSION.SDK_INT < 28) return null
+            val pm = context.packageManager
+            val info = pm.getPackageArchiveInfo(apk.path, 0)?.applicationInfo ?: return null
+            info.sourceDir = apk.path
+            info.publicSourceDir = apk.path
+            val assets = pm.getResourcesForApplication(info).assets
+            val prof = File(scratch, "primary.prof")
+            try {
+                prof.delete()
+                val writer = DeviceProfileWriter(
+                    assets, Runnable::run, QuietDiagnostics, "base.apk",
+                    "dexopt/baseline.prof", "dexopt/baseline.profm", prof,
+                )
+                if (!writer.deviceAllowsProfileInstallerAotWrites()) return null
+                if (!writer.read().transcodeIfNeeded().write()) return null
+                val bytes = ByteArrayOutputStream()
+                ZipOutputStream(bytes).use { zip ->
+                    zip.putNextEntry(ZipEntry("primary.prof"))
+                    prof.inputStream().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
+                return bytes.toByteArray()
+            } finally {
+                prof.delete()
+            }
+        }
+
+        private object QuietDiagnostics : ProfileInstaller.DiagnosticsCallback {
+            override fun onDiagnosticReceived(code: Int, data: Any?) = Unit
+            override fun onResultReceived(code: Int, data: Any?) = Unit
         }
 
         @Suppress("DEPRECATION")

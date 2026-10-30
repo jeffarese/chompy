@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "rex-mobile"
-include(":app", ":terminal")
+include(":app", ":terminal", ":baselineprofile")

@@ -90,6 +90,12 @@ the next. To compare two engines, run both on one boot, in turn, a few rounds ea
 between them when the version code goes down. The live benchmarks above run on the Mac's JVM
 (Robolectric), so their times include no phone CPU; these are the phone-side costs.
 
+## Startup after an update
+
+`scripts/bench-startup.sh` measures the cold start and the first Home → terminal navigation under each
+compiler filter an install can leave, against the demo server, on the emulator. What it found, and the
+baseline profile the updater now installs with each update, are in [startup.md](startup.md).
+
 ## APK size
 
 ```sh
