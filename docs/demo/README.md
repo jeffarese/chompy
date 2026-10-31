@@ -1,33 +1,34 @@
 # The README's demo
 
 The video on the [README](../../README.md) is a real run of the app, recorded on the `rexmobile-test`
-emulator against a Rex server on this Mac. The agents in it are scripts: [agent.py](agent.py) prints
-like Claude Code, Codex, Terraform, Cargo and Gemini would, and reports its status with the same
-OSC 7501 sequences a real agent sends. None of them reports a percentage, as none of those programs does,
-so no card shows a progress bar. The two Claude Code agents draw Claude's own screens (a question, a
-permission menu, a "You should know" note and the effort it thinks at), so the app shows its cards and
-controls for them, and one takes `/effort` as Claude does. Everything else (the server, the protocol, the
-app, the taps) is real.
+emulator against two Rex servers on this Mac, standing in for two Macs. The agents in it are scripts:
+[agent.py](agent.py) draws Claude Code's own screens (its work, a question, a permission menu, a "You
+should know" note and the effort it thinks at) and reports its status with the same OSC 7501 sequences
+Claude Code sends, so the app shows its cards and controls for them, and one takes `/effort` as Claude
+does. Each waits for a cue, a file the recording touches when the story gets to it, so things happen one
+at a time. Everything else (the servers, the protocol, the app, the taps) is real.
 
 The same run makes the README's stills, the Play listing's screenshots and its promo video, and the
 video Play asks for to show what the foreground service does.
 
 ## Record it again
 
-1. Run a separate Rex server for the demo, on loopback only, so none of your own sessions show. The
-   emulator reaches it at `10.0.2.2`.
+1. Run two separate Rex servers for the demo, Studio and MacBook, on loopback only, so none of your own
+   sessions show. The emulator reaches them at `10.0.2.2`.
 
    ```sh
-   mkdir -p build/demo/state
+   mkdir -p build/demo/state build/demo/state2
    rex server run --listen http://127.0.0.1:47321 --allow-anonymous \
      --state-dir build/demo/state --config /dev/null
+   rex server run --listen http://127.0.0.1:47322 --allow-anonymous \
+     --state-dir build/demo/state2 --config /dev/null
    ```
 
-2. Build the app with that server as its only host. The `benchmark` build type runs like a release
+2. Build the app with both servers as its hosts. The `benchmark` build type runs like a release
    (it isn't debuggable) and never shows the update card.
 
    ```sh
-   ./gradlew :app:assembleBenchmark -Prex.defaultHosts=Studio=http://10.0.2.2:47321
+   ./gradlew :app:assembleBenchmark -Prex.defaultHosts=Studio=http://10.0.2.2:47321,MacBook=http://10.0.2.2:47322
    ```
 
 3. Boot the emulator, install the APK, and give it a clean status bar: a fixed clock, full Wi-Fi and
@@ -47,20 +48,20 @@ video Play asks for to show what the foreground service does.
    adb shell cmd uimode night yes
    ```
 
-4. Run `docs/demo/record.sh`. It stages six sessions ([stage.sh](stage.sh)), clears the app's data so
-   nothing from an earlier take shows, starts the recording and starts every agent at once. They work
-   for a few seconds before the first one needs anything. It answers Claude's question from its card on
-   Home, then opens the Claude asking for permission, taps Yes in its terminal, opens the note Claude
-   leaves once the tests pass and puts it away. Then it opens Claude's controls from the key bar, turns
-   its effort up from high to max, goes back to the board and clears Terraform's finished plan with a
-   swipe. The raw video lands in `build/demo/demo-raw.mp4`.
+4. Run `docs/demo/record.sh`. It stages four Claudes, two on each server ([stage.sh](stage.sh)), clears the
+   app's data so nothing from an earlier take shows, starts them and then the recording, once their cards
+   have settled. One thing happens at a time: the Claude adding retries asks which queue to use and is
+   answered from its card on Home; the onboarding guide is finished; the reconnect fix asks to run its
+   tests, and its terminal opens to tap Yes; the tests pass and the note Claude leaves is opened and put
+   away; Claude's controls open from the key bar and its effort goes from high to max; and back on the
+   board the finished guide is cleared with a swipe. The raw video lands in `build/demo/demo-raw.mp4`.
 
 5. Encode it for the README:
 
    ```sh
-   ffmpeg -ss 1.5 -i build/demo/demo-raw.mp4 -vf "fps=60,scale=720:-2:flags=lanczos" \
+   ffmpeg -ss 0.3 -i build/demo/demo-raw.mp4 -vf "fps=60,scale=720:-2:flags=lanczos" \
      -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -movflags +faststart -an docs/media/agent-board.mp4
-   ffmpeg -ss 1.5 -i build/demo/demo-raw.mp4 -vf "fps=15,scale=360:-1:flags=lanczos,split[a][b];\
+   ffmpeg -ss 0.3 -i build/demo/demo-raw.mp4 -vf "fps=15,scale=360:-1:flags=lanczos,split[a][b];\
    [a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle" \
      docs/media/agent-board.gif
    ```
@@ -94,9 +95,9 @@ little longer at some of them, for the last banner to go and the note's card to 
 
   ```sh
   python3 docs/play/store-art.py
-  ffmpeg -loop 1 -i build/demo/promo-backdrop.png -ss 1.5 -i build/demo/demo-raw.mp4 \
+  ffmpeg -loop 1 -i build/demo/promo-backdrop.png -ss 0.3 -i build/demo/demo-raw.mp4 \
     -filter_complex "[1:v]fps=60,scale=486:1080:flags=lanczos[p];[0:v][p]overlay=1250:0:shortest=1,format=yuv420p" \
     -c:v libx264 -preset slow -crf 20 -r 60 -movflags +faststart -an build/demo/chompy-promo-1080p.mp4
   ```
 
-Stop the server with Ctrl-C when done; its state is all under `build/demo/state`.
+Stop the servers with Ctrl-C when done; their state is all under `build/demo/state` and `build/demo/state2`.

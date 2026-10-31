@@ -7,11 +7,11 @@ It shows what your agents are doing on every machine at once, and opens a real t
 running the same engine as the Rex server, when one of them needs you.
 
 <p align="center">
-  <img src="docs/media/agent-board.gif" width="320" alt="Six agents start on a Rex server, each with a dot in its group's colour. The board sorts them as they report: two Claude Code agents need you, Terraform finishes, Cargo's tests fail. The Claude that asks which queue to use is answered from its card on the board, with one tap on webhooks, and goes back to work. The other Claude wants to run the tests: its terminal opens with the permission menu as a card, and a tap on Yes allows it. Once they pass, Claude leaves a note that shows as a card too: Learn more opens its explanation and Understood puts it away. Then Claude's controls open over the key bar, and its effort goes from high to max from the Effort chip's menu. Back on the board, a swipe clears Terraform's finished plan.">
+  <img src="docs/media/agent-board.gif" width="320" alt="Four Claude Code agents work on two Macs, Studio and MacBook. The one adding retries asks which queue to use, and is answered from its card on the board with one tap on webhooks. The onboarding guide finishes and moves to Done. The reconnect fix wants to run the tests: its terminal opens with the permission menu as a card, and a tap on Yes allows it. Once they pass, Claude leaves a note that shows as a card too: Learn more opens its explanation and Understood puts it away. Then Claude's controls open over the key bar, and its effort goes from high to max from the Effort chip's menu. Back on the board, a swipe clears the finished guide.">
 </p>
 <p align="center"><sub>
   48 seconds, unedited, on an emulator (<a href="docs/media/agent-board.mp4">MP4, 720p</a>).
-  The agents are scripts that report with OSC 7501; the server, the app and the taps are real.
+  The agents are scripts that report with OSC 7501; the servers, the app and the taps are real.
   <a href="docs/demo">How it was recorded.</a>
 </sub></p>
 

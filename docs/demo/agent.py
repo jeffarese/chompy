@@ -1,9 +1,10 @@
-"""A scripted agent for the README demo: it prints like one and reports its status with OSC 7501. The Claude Code
-ones draw Claude's own screens (a question, a permission menu, a "You should know" note, the effort it works at), so
-the app shows its cards and controls for them and they take the keys those send.
+"""A scripted Claude Code for the demos: it draws Claude's own screens (its work, a question, a permission menu, a "You
+should know" note, the effort it works at) and reports its status with OSC 7501, so the app shows its cards and
+controls for it and it takes the keys those send.
 
 Usage: agent.py <role> <start-file>
-It waits until <start-file> exists, so every agent starts together when the recording does.
+The roles are story-asks, story-permit, story-work and story-docs (stage.sh). It waits until <start-file> exists, so
+every agent starts together.
 
     agent.py still <start-file> <app> <state> <title> <msg> <folder>
 
@@ -242,56 +243,44 @@ class Claude:
             self.draw()
 
 
-def claude():
-    app, title = "claude-code", "Fix reconnect after a network change"
-    pwd("/Users/dev/src/chompy")
-    status("idle", app=app, title=title)
-    wait_start()
-    c = Claude(app, title, "chompy")
-    c.say("❯ ", "The app doesn't reconnect after switching from wifi to LTE", pause=0.5)
-    status("working", app=app, title=title, msg="Reading HostConnection.kt")
-    c.spinner = "Reading…"
-    c.say("⏺ ", "Read(app/src/main/java/…/HostConnection.kt)", pause=3.0)
-    status("working", app=app, title=title, msg="Tracing the network callback")
-    c.say("⏺ ", "Search(NetworkCallback)", pause=3.0)
-    status("working", app=app, title=title, msg="Editing NetworkWatch.kt")
-    c.say("⏺ ", "Update(NetworkWatch.kt)")
-    c.say("     ", "+ override fun onLost(network: Network) = reconnectSoon()", GREEN)
-    c.say("     ", "+ override fun onAvailable(network: Network) = reconnectSoon()", GREEN, 3.5)
-    c.spinner = None
-    status("blocked", app=app, title=title, kind="permission", msg="Run ./gradlew testDebugUnitTest?")
-    c.permit("Bash command", "./gradlew testDebugUnitTest", "Run the unit tests")
-    status("working", app=app, title=title, msg="Running the tests")
-    c.spinner = "Testing…"
-    c.say("⏺ ", "Bash(./gradlew testDebugUnitTest)")
-    for n in (31, 88, 147, 212):
-        c.said = [x for x in c.said if not x[1].endswith("tests completed")]
-        c.say("  ⎿  ", f"{n} tests completed", DIM, 0.45)
-    c.say("  ⎿  ", "BUILD SUCCESSFUL in 41s", GREEN, 0.4)
-    c.spinner = None
-    status("done", app=app, title=title, msg="Reconnects on network changes; 212 tests pass")
-    c.say("⏺ ", "Done. The app now reconnects when the network changes, and all 212 tests pass.")
-    c.say("", "✻ Worked for 48s", DIM, 0.6)
-    c.note("NetworkCallback only fires while the app runs, so a phone that switched networks in the "
-           "background reconnects when it comes back, not before.",
-           "Android stops delivering network callbacks to an app it has put in the background.",
-           "Check the connection in onResume as well as in the callback.")
-    c.chat()
+# The demo's agents (stage.sh): four Claudes on two hosts. Each waits for its cue,
+# a file next to the start file that the recording touches when the story gets to it, so the take keeps its timing
+# however long a tap takes.
+
+def cue(name):
+    return os.path.exists(os.path.join(os.path.dirname(START), name))
 
 
-def claude_asks():
+def keep_working(c, app, title, steps, until=None):
+    """Works through steps, a (tool line, status message) each, over and over, until the cue named until comes."""
+    i = 0
+    while True:
+        line, msg = steps[i % len(steps)]
+        status("working", app=app, title=title, msg=msg)
+        c.spinner = msg.split()[0] + "…"
+        c.said = c.said[-8:]
+        c.say("⏺ ", line)
+        for _ in range(int(3.5 / 0.05)):
+            if until and cue(until):
+                return
+            time.sleep(0.05)
+        i += 1
+
+
+def story_asks():
+    """Studio: asks which queue its retries use while the phone is away, and gets the answer from the notification."""
     app, title = "claude-code", "Add retries to the webhook sender"
     pwd("/Users/dev/src/billing")
     status("idle", app=app, title=title)
     wait_start()
     c = Claude(app, title, "billing")
-    c.say("❯ ", "Add retries to the webhook sender", pause=0.5)
+    c.say("❯ ", "Add retries to the webhook sender", pause=0.4)
     status("working", app=app, title=title, msg="Reading webhooks/sender.go")
     c.spinner = "Exploring…"
-    c.say("⏺ ", "Read(webhooks/sender.go)", pause=3.0)
+    c.say("⏺ ", "Read(webhooks/sender.go)", pause=2.5)
     status("working", app=app, title=title, msg="Planning the retry policy")
-    c.say("⏺ ", "Read(queue/queue.go)", pause=3.5)
-    c.say("⏺ ", "Exponential backoff, 5 attempts, with jitter. One thing to settle first.", pause=0.6)
+    c.say("⏺ ", "Read(queue/queue.go)", pause=2.5)
+    c.say("⏺ ", "Exponential backoff, 5 attempts, with jitter. One thing to settle first.", pause=0.4)
     c.spinner = None
     status("blocked", app=app, title=title, kind="question", msg="Which queue should the retries go through?")
     picked = c.ask("Queue", "Which queue should the retries go through?", [
@@ -300,78 +289,82 @@ def claude_asks():
     ])
     c.say("⏺ ", "User answered Claude's questions:")
     c.say("  ⎿  ", f"· Which queue should the retries go through? → {picked}")
-    status("working", app=app, title=title, msg=f"Adding a {picked} retry queue")
-    c.spinner = "Writing…"
-    c.say("⏺ ", f"Update(webhooks/sender.go): retries go through the {picked} queue", pause=4.0)
-    c.say("⏺ ", "Write(webhooks/retry_test.go)", pause=3600)
+    keep_working(c, app, title, [
+        (f"Update(webhooks/sender.go)", f"Adding the {picked} retry queue"),
+        ("Write(webhooks/retry_test.go)", "Writing the retry tests"),
+        ("Update(webhooks/backoff.go)", "Adding jitter to the backoff"),
+    ])
 
 
-def codex():
-    app, title = "codex", "Port the CLI flags to cobra"
-    pwd("/Users/dev/src/deploy-tool")
+def story_permit():
+    """Studio: fixes a bug, asks to run the tests when cued, passes them, and leaves a note."""
+    app, title = "claude-code", "Fix reconnect after a network change"
+    pwd("/Users/dev/src/chompy")
     status("idle", app=app, title=title)
     wait_start()
-    steps = ["Reading cmd/root.go", "Mapping 23 flags", "Rewriting cmd/deploy.go", "Updating the help text",
-             "Running go vet"]
-    say(f"{BOLD}codex{RESET} Port the CLI flags to cobra\n")
-    i = 0
-    while True:
-        status("working", app=app, title=title, msg=steps[i % len(steps)])
-        say(f"• {steps[i % len(steps)]}", 4.0)
-        i += 1
+    c = Claude(app, title, "chompy")
+    c.say("❯ ", "The app doesn't reconnect after switching from wifi to LTE", pause=0.4)
+    keep_working(c, app, title, [
+        ("Read(app/src/main/java/…/HostConnection.kt)", "Reading HostConnection.kt"),
+        ("Search(NetworkCallback)", "Tracing the network callback"),
+        ("Update(NetworkWatch.kt)", "Editing NetworkWatch.kt"),
+    ], until="permit")
+    c.say("     ", "+ override fun onLost(network: Network) = reconnectSoon()", GREEN)
+    c.say("     ", "+ override fun onAvailable(network: Network) = reconnectSoon()", GREEN)
+    c.spinner = None
+    status("blocked", app=app, title=title, kind="permission", msg="Run ./gradlew testDebugUnitTest?")
+    c.permit("Bash command", "./gradlew testDebugUnitTest", "Run the unit tests")
+    status("working", app=app, title=title, msg="Running the tests")
+    c.spinner = "Testing…"
+    c.say("⏺ ", "Bash(./gradlew testDebugUnitTest)")
+    for n in (48, 131, 212):
+        c.said = [x for x in c.said if not x[1].endswith("tests completed")]
+        c.say("  ⎿  ", f"{n} tests completed", DIM, 0.4)
+    c.say("  ⎿  ", "BUILD SUCCESSFUL in 41s", GREEN, 0.3)
+    c.spinner = None
+    status("done", app=app, title=title, msg="Reconnects on network changes; 212 tests pass")
+    c.say("⏺ ", "Done. The app now reconnects when the network changes, and all 212 tests pass.")
+    c.say("", "✻ Worked for 3m 12s", DIM, 0.4)
+    c.note("NetworkCallback only fires while the app runs, so a phone that switched networks in the "
+           "background reconnects when it comes back, not before.",
+           "Android stops delivering network callbacks to an app it has put in the background.",
+           "Check the connection in onResume as well as in the callback.")
+    c.chat()
 
 
-def terraform():
-    app, title = "terraform", "Plan staging"
-    pwd("/Users/dev/src/infra/staging")
+def story_work():
+    """MacBook: works all along."""
+    app, title = "claude-code", "Move sessions to Redis"
+    pwd("/Users/dev/src/api")
     status("idle", app=app, title=title)
     wait_start()
-    say(f"{BOLD}terraform plan{RESET}\n")
-    for line in ("module.vpc: Refreshing state...", "module.db: Refreshing state...",
-                 "module.api: Refreshing state...", "module.queue: Refreshing state...", "Computing the plan..."):
-        status("working", app=app, title=title, msg=line)
-        say(line, 2.0)
-    status("done", app=app, title=title, msg="Plan: 3 to add, 1 to change, 0 to destroy")
-    say(f"\n{BOLD}Plan:{RESET} {GREEN}3 to add{RESET}, {YELLOW}1 to change{RESET}, 0 to destroy.")
-    time.sleep(3600)
+    c = Claude(app, title, "api")
+    c.say("❯ ", "Move the session store from Postgres to Redis", pause=0.4)
+    keep_working(c, app, title, [
+        ("Read(internal/session/store.go)", "Reading the session store"),
+        ("Write(internal/session/redis.go)", "Writing the Redis store"),
+        ("Update(cmd/api/main.go)", "Wiring it into the server"),
+        ("Bash(go test ./internal/session/...)", "Running the session tests"),
+    ])
 
 
-def cargo():
-    app, title = "cargo", "Test the parser"
-    pwd("/Users/dev/src/vt-parser")
+def story_docs():
+    """MacBook: writes a guide, and finishes when cued."""
+    app, title = "claude-code", "Write the onboarding guide"
+    pwd("/Users/dev/src/handbook")
     status("idle", app=app, title=title)
     wait_start()
-    status("working", app=app, title=title, msg="cargo test")
-    status("working", id="build", title="Build")
-    say(f"{BOLD}cargo test{RESET}")
-    for p in range(10, 101, 15):
-        status("working", app=app, title=title, msg="Compiling 84 crates")
-        say(f"   {GREEN}Compiling{RESET} crate {p}/100", 1.0)
-    status("done", id="build", title="Build")
-    status("working", app=app, title=title, msg="Running 148 tests")
-    status("working", id="build/test", title="Unit tests")
-    say(f"     {GREEN}Running{RESET} unittests src/lib.rs", 2.5)
-    status("error", app=app, title=title, msg="2 of 148 tests failed: csi::params, osc::overlong")
-    status("error", id="build/test", title="Unit tests", msg="2 failed")
-    say(f"test csi::params ... {RED}FAILED{RESET}")
-    say(f"test osc::overlong ... {RED}FAILED{RESET}")
-    say(f"\ntest result: {RED}FAILED{RESET}. 146 passed; 2 failed")
-    time.sleep(3600)
-
-
-def gemini():
-    app, title = "gemini", "Draft the 0.4.1 release notes"
-    pwd("/Users/dev/src/site")
-    status("idle", app=app, title=title)
-    wait_start()
-    steps = ["Reading the changelog", "Summarising 14 commits", "Writing highlights", "Checking links",
-             "Polishing the wording"]
-    say(f"{BOLD}gemini{RESET} Draft the 0.4.1 release notes\n")
-    i = 0
-    while True:
-        status("working", app=app, title=title, msg=steps[i % len(steps)])
-        say(f"✦ {steps[i % len(steps)]}", 5.0)
-        i += 1
+    c = Claude(app, title, "handbook")
+    c.say("❯ ", "Write an onboarding guide for new backend engineers", pause=0.4)
+    keep_working(c, app, title, [
+        ("Read(README.md)", "Reading the repo's docs"),
+        ("Write(docs/onboarding/setup.md)", "Writing the setup page"),
+        ("Write(docs/onboarding/first-week.md)", "Writing the first week"),
+    ], until="docs")
+    c.spinner = None
+    status("done", app=app, title=title, msg="6 pages in docs/onboarding, linked from the README")
+    c.say("⏺ ", "Done: 6 pages in docs/onboarding, linked from the README.")
+    c.chat()
 
 
 def still():
@@ -384,4 +377,5 @@ def still():
     time.sleep(3600)
 
 
-{"still": still, "claude": claude, "claude-asks": claude_asks, "codex": codex, "terraform": terraform, "cargo": cargo, "gemini": gemini}[ROLE]()
+{"still": still, "story-asks": story_asks, "story-permit": story_permit, "story-work": story_work,
+ "story-docs": story_docs}[ROLE]()
