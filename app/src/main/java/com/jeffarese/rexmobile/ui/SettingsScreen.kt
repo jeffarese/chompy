@@ -196,6 +196,7 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onHosts: () -> Unit, onS
     val phoneMode by settings.phoneMode.flow.collectAsState()
     val keepScreenOn by settings.keepScreenOn.flow.collectAsState()
     val haptics by settings.haptics.flow.collectAsState()
+    val lagNote by settings.scrollLagNote.flow.collectAsState()
     val hiddenKeys by settings.hiddenKeys.flow.collectAsState()
     val keyOrder by settings.keyOrder.flow.collectAsState()
     val stripItems by settings.stripItems.flow.collectAsState()
@@ -293,6 +294,12 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onHosts: () -> Unit, onS
                         },
                         label = { it.label },
                     ) { settings.keepScreenOn.value = it }
+                    Divider()
+                    SwitchRow(
+                        "Say when scrolling lags",
+                        "When scrolling Claude in fullscreen waits on the network, a note says why",
+                        lagNote,
+                    ) { settings.scrollLagNote.value = it }
                 }
             }
 

@@ -967,6 +967,10 @@ class RemoteTerminal(
     @Volatile private var lastWheelCall: Job? = null
     /** The direction of the last wheel event sent, 1 down or -1 up; 0 before any. */
     private var lastWheelDirection = 0
+    private val scrollLag = ScrollLag()
+    private val _scrollLagged = MutableStateFlow(false)
+    /** Wheel scrolling here has waited long on the network (see [ScrollLag]). Stays true once seen. */
+    val scrollLagged: StateFlow<Boolean> = _scrollLagged
 
     private val wheelSink = object : TerminalView.WheelSink {
         override fun scrollLines(lines: Int, column: Int, row: Int) = scrollWheel(lines, column, row)
@@ -1032,9 +1036,15 @@ class RemoteTerminal(
         }
         val call = eventPayload("wheel", payload)
         lastWheelDirection = events.sign
-        repeat(abs(events)) {
+        val sentAt = SystemClock.uptimeMillis()
+        val count = abs(events)
+        repeat(count) { i ->
             // Undispatched, so each request is queued on the connection before the next one.
-            lastWheelCall = scope.launch(start = CoroutineStart.UNDISPATCHED) { runCatching { host.call("block.event", call) } }
+            lastWheelCall = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                val answered = runCatching { host.call("block.event", call) }.isSuccess
+                // The batch's last answer says how long the batch took there and back.
+                if (answered && i == count - 1 && scrollLag.add(SystemClock.uptimeMillis() - sentAt)) _scrollLagged.value = true
+            }
         }
     }
 

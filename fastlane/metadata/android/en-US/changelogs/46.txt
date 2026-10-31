@@ -1,0 +1,1 @@
+Claude Code in fullscreen no longer brings up an offer to restart it in classic mode. Instead, when scrolling it waits on a slow link, as on mobile data, a short note says why: every scroll waits for Claude to redraw. On a quick link it stays quiet. Close it for that terminal, or turn it off with Don't show again or in Settings.

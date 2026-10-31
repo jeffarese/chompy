@@ -123,14 +123,14 @@ class SettingsTest {
     }
 
     @Test
-    fun dismissedClassicOffersAreKeptForTheLatestBlocks() {
+    fun dismissedLagNotesAreKeptForTheLatestBlocks() {
         val s = Settings(context, prefs)
-        (1..60).forEach { s.dismissClassicOffer("b$it") }
+        (1..60).forEach { s.dismissLagNote("b$it") }
         // Dismissed again, an old one counts as the latest.
-        s.dismissClassicOffer("b20")
+        s.dismissLagNote("b20")
 
-        val next = Settings(context, prefs).classicOfferDismissed.value
-        assertEquals(Settings.MAX_CLASSIC_DISMISSED, next.size)
+        val next = Settings(context, prefs).lagNoteDismissed.value
+        assertEquals(Settings.MAX_LAG_NOTE_DISMISSED, next.size)
         assertEquals("b20", next.last())
         assertTrue("b60" in next)
         assertFalse("b10" in next)

@@ -135,25 +135,16 @@ Fullscreen is fine for glancing at the last reply. For reading back through a lo
 the phone, classic is much better, and nothing on the phone can make fullscreen scroll the same way:
 there's no history in the terminal to scroll, only what Claude redraws.
 
-So when a terminal shows Claude in fullscreen, Chompy offers to restart that one conversation in
-classic. You don't need to change anything in Claude yourself:
+Chompy doesn't change Claude's mode for you. When scrolling a fullscreen Claude starts waiting on the
+network (wheel events taking 150 ms or more to answer, as on mobile data), a note says why. On a
+quick link, such as Wi-Fi at home, it stays quiet. Closed, it stays away for that terminal; "Don't
+show again" turns it off everywhere, and Settings has it under Terminal.
 
-- **It's the same conversation.** Chompy types `/exit`, reads the `claude --resume` line Claude
-  prints, and resumes it with `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` for that run only. The
-  permission mode and effort shown in Claude's footer go with it. A model given on Claude's command
-  line doesn't, as Rex doesn't report a program's arguments.
-- **Your settings stay as they are.** Other sessions, and new ones, still start in fullscreen, on
-  the Mac and everywhere else.
-- **It only switches when nothing is lost.** Claude has to be idle, with no question open and nothing
-  typed in its message box, and started from a shell, so there's somewhere to resume it. Otherwise
-  it says what to finish first.
-- **Dismissed, it doesn't ask again** for that terminal.
-- **To go back to fullscreen,** quit Claude and run `claude --resume` as usual.
-
-If you mostly follow Claude from the phone, classic everywhere is simplest. If you prefer fullscreen
-at the desk, keep it and switch only the conversations you want to read back on the phone. Sessions
-Claude runs in the background (`claude --bg`, agent view, `claude attach`) always draw in fullscreen,
-whatever the setting says.
+Which mode to use is up to you. If you mostly follow Claude from the phone, classic is simplest: set
+`"tui": "default"` in Claude's settings, or run `/tui` in a conversation. If you prefer fullscreen
+at the desk, keep it; the phone still shows and answers everything, and only scrolling back is
+slower. Sessions Claude runs in the background (`claude --bg`, agent view, `claude attach`) always
+draw in fullscreen, whatever the setting says.
 
 ### Why part of Termux is still here
 

@@ -114,16 +114,19 @@ class Settings(context: Context, private val prefs: SharedPreferences) {
     }
 
     /**
-     * Blocks whose offer to switch Claude to classic mode the user waved away, newest last. Kept here
-     * rather than with the terminal, which is dropped from the cache and gone after a restart.
+     * Blocks whose note on lagging scrolls the user waved away, newest last. Kept here rather than with the
+     * terminal, which is dropped from the cache and gone after a restart.
      */
-    val classicOfferDismissed = Setting(prefs.getString(CLASSIC_OFFER_DISMISSED, null).orEmpty().split('\n').filter { it.isNotEmpty() }) {
-        prefs.edit().putString(CLASSIC_OFFER_DISMISSED, it.joinToString("\n")).apply()
+    val lagNoteDismissed = Setting(prefs.getString(LAG_NOTE_DISMISSED, null).orEmpty().split('\n').filter { it.isNotEmpty() }) {
+        prefs.edit().putString(LAG_NOTE_DISMISSED, it.joinToString("\n")).apply()
     }
 
-    /** Keep the classic-mode offer away from [blockId], forgetting the oldest beyond [MAX_CLASSIC_DISMISSED]. */
-    fun dismissClassicOffer(blockId: String) {
-        classicOfferDismissed.value = (classicOfferDismissed.value - blockId + blockId).takeLast(MAX_CLASSIC_DISMISSED)
+    /** Say why when scrolling Claude in fullscreen lags. The note's "Don't show again" turns it off, and Settings back on. */
+    val scrollLagNote = bool(SCROLL_LAG_NOTE, true)
+
+    /** Keep the lag note away from [blockId], forgetting the oldest beyond [MAX_LAG_NOTE_DISMISSED]. */
+    fun dismissLagNote(blockId: String) {
+        lagNoteDismissed.value = (lagNoteDismissed.value - blockId + blockId).takeLast(MAX_LAG_NOTE_DISMISSED)
     }
 
     val defaultTextPx: Int get() = spToPx(TerminalViewport.DEFAULT_TEXT_SP)
@@ -174,12 +177,13 @@ class Settings(context: Context, private val prefs: SharedPreferences) {
         const val ALERT_VIBRATE = "alert_vibrate"
         const val STAY_CONNECTED = "stay_connected_s"
         const val WATCH_IN_BACKGROUND = "watch_in_background"
-        const val CLASSIC_OFFER_DISMISSED = "classic_offer_dismissed"
+        const val LAG_NOTE_DISMISSED = "scroll_lag_note_dismissed"
+        const val SCROLL_LAG_NOTE = "scroll_lag_note"
         /** Themes chosen that the app no longer has have been forgotten (AppModel). */
         const val LOST_THEMES_FORGOTTEN = "lost_themes_forgotten"
 
         /** Blocks come and go: only the most recent dismissals are worth keeping. */
-        const val MAX_CLASSIC_DISMISSED = 50
+        const val MAX_LAG_NOTE_DISMISSED = 50
 
         const val DEFAULT_STAY_CONNECTED = 90
 

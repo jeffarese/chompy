@@ -131,6 +131,8 @@ class SettingsScreenTest {
         assertFalse(settings.phoneMode.value)
         scrollTo("Vibrate").performClick()
         assertFalse(settings.alertVibrate.value)
+        scrollTo("Say when scrolling lags").performClick()
+        assertFalse(settings.scrollLagNote.value)
     }
 
     @Test

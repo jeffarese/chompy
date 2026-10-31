@@ -132,7 +132,6 @@ import com.jeffarese.rexmobile.model.KeepScreenOn
 import com.jeffarese.rexmobile.rex.ProgramStatus
 import com.jeffarese.rexmobile.rex.StreamState
 import com.jeffarese.rexmobile.rex.WindowView
-import com.jeffarese.rexmobile.terminal.ClassicSwitch
 import com.jeffarese.rexmobile.terminal.ClaudeSurvey
 import com.jeffarese.rexmobile.terminal.FyiAction
 import com.jeffarese.rexmobile.terminal.FyiNote
@@ -153,8 +152,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 private val NO_INFO = MutableStateFlow(ScreenInfo())
-private val NO_SWITCH = MutableStateFlow<ClassicSwitch.State>(ClassicSwitch.State.Idle)
-private val NOT_DISMISSED = MutableStateFlow(false)
+private val NOT_LAGGED = MutableStateFlow(false)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -297,10 +295,11 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
     val fullscreen by remember(info) { derivedStateOf { info.value.fullscreen } }
     // After "Chat in main session", Claude's input box holds the note, waiting for a question.
     val noteInBox by remember(info) { derivedStateOf { info.value.claudeInput?.startsWith(NOTE_FOR_CLAUDE) == true } }
-    val switchState by (terminal?.classicSwitch?.state ?: NO_SWITCH).collectAsState()
     // Waved away for this block, here or before the terminal was dropped from the cache or the app restarted.
-    val dismissedBlocks by settings.classicOfferDismissed.flow.collectAsState()
-    val switchDismissed = (terminal?.classicSwitch?.dismissed ?: NOT_DISMISSED).collectAsState().value || blockId in dismissedBlocks
+    val dismissedBlocks by settings.lagNoteDismissed.flow.collectAsState()
+    val lagNoteDismissed = blockId in dismissedBlocks
+    val scrollLagged by (terminal?.scrollLagged ?: NOT_LAGGED).collectAsState()
+    val lagNoteOn by settings.scrollLagNote.flow.collectAsState()
 
     // Once Claude's footer has shown, keep its strip: hiding it whenever the footer scrolls away
     // would resize a phone-sized terminal, and the redraw could bring the footer straight back.
@@ -501,16 +500,11 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
                 } else null,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
-            // Claude in fullscreen keeps no history here to scroll: offer to restart it in its classic renderer.
-            val offerSwitch = switchState != ClassicSwitch.State.Idle || (live && !syncing && isClaude && fullscreen && !switchDismissed)
-            if (terminal != null && overlay == null && offerSwitch) {
-                ClassicSwitchBanner(
-                    switchState,
-                    onSwitch = terminal.classicSwitch::start,
-                    onDismiss = {
-                        terminal.classicSwitch.dismiss()
-                        settings.dismissClassicOffer(terminal.blockId)
-                    },
+            // Claude in fullscreen keeps no history here to scroll, so once scrolling it lags, say why.
+            if (terminal != null && overlay == null && live && !syncing && isClaude && fullscreen && scrollLagged && lagNoteOn && !lagNoteDismissed) {
+                ScrollLagNote(
+                    onDismiss = { settings.dismissLagNote(terminal.blockId) },
+                    onNever = { settings.scrollLagNote.value = false },
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
             }
@@ -1121,32 +1115,26 @@ internal fun BottomOverlay(
 }
 
 /**
- * Offers to restart Claude Code in its classic renderer while it runs fullscreen, where every scroll
- * goes to Claude and waits for it to redraw. Shows the switch's progress, or why it couldn't.
+ * Says why scrolling lags once it does with Claude Code in fullscreen: every scroll goes to Claude and waits for it
+ * to redraw. Only says so: changing Claude's renderer is the user's call. [onNever] stops it everywhere.
  */
 @Composable
-internal fun ClassicSwitchBanner(state: ClassicSwitch.State, onSwitch: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ScrollLagNote(onDismiss: () -> Unit, onNever: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(12.dp)
-    Row(
+    Column(
         modifier.keepTapsOffTerminal().fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp).shadow(6.dp, shape).clip(shape)
             .background(Rex.surfaceHigh).border(0.5.dp, Rex.divider, shape).padding(start = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (state is ClassicSwitch.State.Working) {
-            WorkingDots(color = Rex.textDim)
-            Spacer(Modifier.width(10.dp))
-            Text(state.step, color = Rex.text, fontSize = 13.sp, modifier = Modifier.weight(1f).padding(vertical = 14.dp))
-        } else {
+        Row(verticalAlignment = Alignment.Top) {
             Text(
-                (state as? ClassicSwitch.State.Failed)?.message
-                    ?: "Claude is in fullscreen, so scrolling waits on Claude. Restart it in classic mode to scroll on the phone? " +
-                    "Same conversation; your settings stay as they are.",
-                color = Rex.text, fontSize = 13.sp, modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                "Scrolling lags because Claude is in fullscreen: every scroll waits for Claude to redraw over the network. " +
+                    "In Claude's classic mode, the conversation scrolls on the phone.",
+                color = Rex.text, fontSize = 13.sp, modifier = Modifier.weight(1f).padding(top = 12.dp),
             )
-            TextButton(onClick = onSwitch) {
-                Text(if (state is ClassicSwitch.State.Failed) "Retry" else "Switch", color = Rex.accent, fontWeight = FontWeight.SemiBold)
-            }
             IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "Dismiss", tint = Rex.textDim) }
+        }
+        Row(Modifier.fillMaxWidth().padding(end = 4.dp), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onNever) { Text("Don't show again", color = Rex.textDim) }
         }
     }
 }
