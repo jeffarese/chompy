@@ -248,21 +248,6 @@ class RemoteTerminal(
         }
     })
 
-    /** Restarts Claude Code here in its classic renderer, which leaves the conversation in the history the phone scrolls. */
-    val classicSwitch = ClassicSwitch(object : ClassicSwitch.Link {
-        override fun info() = _screenInfo.value
-
-        override suspend fun process() = host.blockMethod(sessionId, blockId, "process", timeoutMs = 5_000) as? JsonObject
-
-        override fun type(text: String) = typeText(text)
-
-        override fun key(key: RemoteKey) = sendKey(key)
-
-        override fun lines() = session.emulator?.let(ScreenReader::wholeLines).orEmpty().also { recompress() }
-
-        override fun screen() = session.emulator?.let(ScreenReader::visibleLines).orEmpty()
-    }, scope)
-
     private var lastViewSize: RemoteSize? = null
     private var phoneResizeJob: Job? = null
     /** The size last asked of the server. */

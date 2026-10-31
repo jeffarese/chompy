@@ -6,6 +6,7 @@ import com.jeffarese.rexmobile.FakeRex
 import com.jeffarese.rexmobile.model.ConnStatus
 import com.jeffarese.rexmobile.model.HostConfig
 import com.jeffarese.rexmobile.model.HostConnection
+import com.jeffarese.rexmobile.terminal.emulator.TerminalEmulator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -115,8 +116,8 @@ class HiddenTerminalTest {
         quiet()
         val compressed = emulator.residentBytes
 
-        // Reading it all, as switching to the classic renderer does, unpacks it without counting as activity.
-        ScreenReader.wholeLines(emulator)
+        // Reading it all, as copying it does, unpacks it without counting as activity.
+        readAll(emulator)
         val unpacked = emulator.residentBytes
         assertTrue("$unpacked after reading, $compressed before", unpacked > compressed * 2)
         quiet()
@@ -137,7 +138,7 @@ class HiddenTerminalTest {
         rex.datas.last().output((0 until 3_000).joinToString("") { "\r\nline $it " + "x".repeat(100) }.toByteArray())
         waitFor("the output") { screen().contains("line 2999") }
         val emulator = t.session.emulator!!
-        ScreenReader.wholeLines(emulator)
+        readAll(emulator)
         val unpacked = emulator.residentBytes
 
         t.trimMemory()
@@ -145,6 +146,10 @@ class HiddenTerminalTest {
         // Rows let go are read again when wanted.
         assertTrue(screen().contains("line 2999"))
     }
+
+    /** Every row of history and screen, which unpacks what the terminal compressed. */
+    private fun readAll(emulator: TerminalEmulator) =
+        (-emulator.screen.activeTranscriptRows until emulator.mRows).map { emulator.screen.getSelectedText(0, it, emulator.mColumns - 1, it) }
 
     private fun screen(): String = terminal!!.session.emulator?.let { ScreenReader.visibleLines(it) }.orEmpty().joinToString("\n")
 

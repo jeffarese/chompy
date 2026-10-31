@@ -43,9 +43,7 @@ import java.util.concurrent.TimeUnit
  * each line at once), `claude` (lines per wheel event, bursts, taps), `model` (its acceleration)
  * and `transport` (round trips of writes and block.event, awaited and pipelined).
  * REX_LIVE_RENDERER=classic starts Claude Code in its classic renderer instead, which leaves the
- * conversation in the terminal's history; the `history` part scrolls that. `switch` restarts a
- * fullscreen Claude Code in the classic renderer the way the phone's banner does; `switch,history`
- * then scrolls what that left.
+ * conversation in the terminal's history; the `history` part scrolls that.
  * Skipped unless REX_LIVE_HOST is set. Runs Haiku once in a fresh directory (REX_LIVE_WORKDIR, or a
  * temporary one) and destroys its session at the end. Results are printed, and written to
  * REX_LIVE_WORKDIR/scroll-results.txt.
@@ -123,7 +121,6 @@ class LiveScrollTest {
                 "gestures" -> gestures(withSink = true)
                 "gestures-old" -> gestures(withSink = false)
                 "history" -> history()
-                "switch" -> switchToClassic()
                 else -> claudeBehaviour()
             }
             log("modes at end: alt=${emu.isAlternateBufferActive} mouse=${emu.isMouseTrackingActive}")
@@ -490,36 +487,6 @@ class LiveScrollTest {
         log("the end of the history and screen:\n" + allLines().takeLast(rows + 12).joinToString("\n"))
         // No toBottom(): without mouse reporting, its wheel bytes would be typed into Claude's input.
         t.view = shown?.terminalView
-    }
-
-    /** Restarts Claude Code in its classic renderer as the phone's banner does, and checks what came back. */
-    private fun switchToClassic() {
-        val t = terminal!!
-        fun emu() = t.session.emulator!!
-        val before = info()
-        log("\n== switch: alt=${emu().isAlternateBufferActive} mouse=${emu().isMouseTrackingActive} fullscreen=${before.fullscreen}, " +
-            "mode=${before.claudeMode}, effort=${before.claudeEffort}, input='${before.claudeInput}'")
-        val started = SystemClock.uptimeMillis()
-        var last: ClassicSwitch.State? = null
-        t.classicSwitch.start()
-        waitFor("the switch", 120_000) {
-            val state = t.classicSwitch.state.value
-            if (state != last) {
-                log("  ${SystemClock.uptimeMillis() - started} ms: $state")
-                last = state
-            }
-            state is ClassicSwitch.State.Failed || state == ClassicSwitch.State.Idle && SystemClock.uptimeMillis() - started > 1000
-        }
-        pump(2000)
-        val after = info()
-        val numbers = allLines().mapNotNull { number.find(it)?.groupValues?.get(1)?.toInt() }
-        log("after: alt=${emu().isAlternateBufferActive} mouse=${emu().isMouseTrackingActive} fullscreen=${after.fullscreen}, " +
-            "mode=${after.claudeMode}, effort=${after.claudeEffort}, input='${after.claudeInput}'; ${emu().screen.activeTranscriptRows} rows of history, " +
-            "the numbers 1 to 300 in order: ${numbers.distinct() == (1..300).toList()} (${numbers.size} found, ${numbers.distinct().size} distinct)")
-        log("screen after the switch:\n${text()}")
-        assertTrue("the switch: ${t.classicSwitch.state.value}", t.classicSwitch.state.value == ClassicSwitch.State.Idle)
-        assertTrue("classic after the switch", !emu().isAlternateBufferActive && !after.fullscreen)
-        assertTrue("the mode came back", after.claudeMode == before.claudeMode)
     }
 
     /** Every row of history and screen, oldest first. */

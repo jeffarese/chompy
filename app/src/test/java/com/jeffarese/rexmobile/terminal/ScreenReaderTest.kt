@@ -316,15 +316,6 @@ class ScreenReaderTest {
     }
 
     @Test
-    fun wholeLinesJoinWhatThePhoneWidthWrapped() {
-        val t = TestSession(columns = 50, rows = 6)
-        t.print("Resume this session with:\r\nclaude --resume 5890bb3a-0ebe-4187-aeaa-42983c13ded9\r\n❯ ")
-        val lines = ScreenReader.wholeLines(t.emulator)
-        assertTrue(lines.toString(), "claude --resume 5890bb3a-0ebe-4187-aeaa-42983c13ded9" in lines)
-        assertEquals(listOf("5890bb3a-0ebe-4187-aeaa-42983c13ded9"), ClassicSwitch.resumeIds(lines))
-    }
-
-    @Test
     fun fullscreenOnTheAlternateScreenWithTheMouse() {
         val t = TestSession(columns = 40, rows = 10)
         t.print("$ claude\r\n")

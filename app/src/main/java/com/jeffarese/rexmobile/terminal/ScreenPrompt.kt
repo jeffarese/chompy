@@ -319,26 +319,6 @@ object ScreenReader {
         return line.getStyle(line.findColumnOfIndex(index).coerceIn(0, emulator.mColumns - 1))
     }
 
-    /**
-     * Every line of the history and screen, oldest first, with the rows the terminal wrapped joined
-     * back into the line the program wrote, as a long command at phone width.
-     */
-    fun wholeLines(emulator: TerminalEmulator): List<String> {
-        val screen = emulator.screen
-        val lastColumn = emulator.mColumns - 1
-        val lines = mutableListOf<String>()
-        val line = StringBuilder()
-        for (row in -screen.activeTranscriptRows until emulator.mRows) {
-            line.append(screen.getSelectedText(0, row, lastColumn, row))
-            if (!screen.getLineWrap(row)) {
-                lines += line.toString().trimEnd()
-                line.clear()
-            }
-        }
-        if (line.isNotEmpty()) lines += line.toString().trimEnd()
-        return lines
-    }
-
     fun visibleLines(emulator: TerminalEmulator): List<String> {
         val screen = emulator.screen
         val lastColumn = emulator.mColumns - 1
