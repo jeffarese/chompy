@@ -107,11 +107,85 @@ Measured on an emulator and against a live server ([full results](docs/perf/resu
 | 14,000 rows of 150-column history | 6.7 MB, compressed, outside the Java heap |
 
 Scrolling happens on the phone. History is local, so a drag needs no network and no repaint from
-the host. Claude Code's fullscreen renderer keeps no history, so scrolling it means sending wheel
-events and waiting for Claude to redraw. Measured live, that trails the finger by 0.5 to 3.5 lines.
-When the phone sees fullscreen Claude, it offers to resume that one conversation in the classic
-renderer, keeping its mode and effort and leaving your settings alone. Measured the same way, the
-classic renderer stays within 0.03 lines of the finger.
+the host.
+
+### Scrolling Claude Code: classic and fullscreen
+
+Claude Code draws its screen in one of two ways, set by `tui` in its settings or with `/tui`. Both
+work in Chompy: the board, answers from cards and notifications, notes and Claude's controls are the
+same in either. They differ in where the conversation lives, and that decides how scrolling feels on
+a phone.
+
+| | Classic (`"tui": "default"`) | Fullscreen (`"tui": "fullscreen"`) |
+|---|---|---|
+| How it draws | Prints the conversation like any program, with the prompt under the latest reply | Takes over the whole screen, with the prompt pinned at the bottom |
+| Where the conversation is | In the terminal's history, which the phone keeps | Inside Claude, on the Mac. The terminal holds only what's on screen |
+| A drag on the phone | Scrolls the phone's copy, with no network | Goes to Claude as mouse-wheel events, and the phone waits for Claude to redraw |
+| Measured live | Within 0.03 lines of the finger; a fling glides; your place holds while Claude prints | 0.5 to 3.5 lines behind the finger, in whole-line jumps; a fling keeps redrawing for about a second after you let go |
+
+Fullscreen is fine for glancing at the last reply. For reading back through a long conversation on
+the phone, classic is much better, and nothing on the phone can make fullscreen scroll the same way:
+there's no history in the terminal to scroll, only what Claude redraws.
+
+So when a terminal shows Claude in fullscreen, Chompy offers to restart that one conversation in
+classic. You don't need to change anything in Claude yourself:
+
+- **It's the same conversation.** Chompy types `/exit`, reads the `claude --resume` line Claude
+  prints, and resumes it with `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` for that run only. The
+  permission mode and effort shown in Claude's footer go with it. A model given on Claude's command
+  line doesn't, as Rex doesn't report a program's arguments.
+- **Your settings stay as they are.** Other sessions, and new ones, still start in fullscreen, on
+  the Mac and everywhere else.
+- **It only switches when nothing is lost.** Claude has to be idle, with no question open and nothing
+  typed in its message box, and started from a shell, so there's somewhere to resume it. Otherwise
+  it says what to finish first.
+- **Dismissed, it doesn't ask again** for that terminal.
+- **To go back to fullscreen,** quit Claude and run `claude --resume` as usual.
+
+If you mostly follow Claude from the phone, classic everywhere is simplest. If you prefer fullscreen
+at the desk, keep it and switch only the conversations you want to read back on the phone. Sessions
+Claude runs in the background (`claude --bg`, agent view, `claude attach`) always draw in fullscreen,
+whatever the setting says.
+
+#### A third way: fullscreen's layout with classic's history (undocumented)
+
+Claude Code has a hidden renderer that draws fullscreen's layout, with the prompt pinned at the
+bottom, without taking over the screen. It holds the prompt in place with a scroll region (`DECSTBM`,
+hence its name), and every finished line goes into the terminal's own history, as in classic. On the
+phone that means the pinned prompt and local scrolling together. It isn't in Claude Code's docs or
+settings, so it may change or go away in any release.
+
+It's turned on by environment variables, and only takes effect with `tui` left at `default`
+(fullscreen turns it off). In `~/.claude/settings.json`:
+
+```json
+{
+  "tui": "default",
+  "env": {
+    "CLAUDE_CODE_DECSTBM": "1",
+    "CLAUDE_CODE_FORCE_SYNC_OUTPUT": "1"
+  }
+}
+```
+
+- **`CLAUDE_CODE_DECSTBM`** turns the renderer on.
+- **`CLAUDE_CODE_FORCE_SYNC_OUTPUT`** is needed under Rex. The renderer only runs on terminals Claude
+  knows can draw a frame in one go (synchronized output). Claude decides before Rex has answered its
+  question about that, and Rex isn't on its list of terminals assumed to, so without the variable it
+  quietly falls back to classic.
+
+These are Claude's settings, so they apply wherever Claude runs, at the desk too. Measured live on
+the phone with Claude Code 2.1.314:
+
+- **Scrolling** is as good as classic's: within 0.03 lines of the finger, flings glide, and your
+  place holds while Claude prints.
+- **History stays faithful.** The phone's copy matched the server's line for line, even across a
+  resize to 100 columns and back. Classic, in the same test, repeated 258 of its 300 lines.
+- **One bug, Claude's:** the first lines of a fast reply sometimes land blank in the history, from
+  3 to 24 lines in four replies from Haiku. Rex's own copy has the same gaps, so they come from
+  Claude, not the phone.
+
+With this on, Chompy sees no fullscreen Claude, so it doesn't offer the switch.
 
 ### Why part of Termux is still here
 
