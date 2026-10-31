@@ -147,46 +147,6 @@ at the desk, keep it and switch only the conversations you want to read back on 
 Claude runs in the background (`claude --bg`, agent view, `claude attach`) always draw in fullscreen,
 whatever the setting says.
 
-#### A third way: fullscreen's layout with classic's history (undocumented)
-
-Claude Code has a hidden renderer that draws fullscreen's layout, with the prompt pinned at the
-bottom, without taking over the screen. It holds the prompt in place with a scroll region (`DECSTBM`,
-hence its name), and every finished line goes into the terminal's own history, as in classic. On the
-phone that means the pinned prompt and local scrolling together. It isn't in Claude Code's docs or
-settings, so it may change or go away in any release.
-
-It's turned on by environment variables, and only takes effect with `tui` left at `default`
-(fullscreen turns it off). In `~/.claude/settings.json`:
-
-```json
-{
-  "tui": "default",
-  "env": {
-    "CLAUDE_CODE_DECSTBM": "1",
-    "CLAUDE_CODE_FORCE_SYNC_OUTPUT": "1"
-  }
-}
-```
-
-- **`CLAUDE_CODE_DECSTBM`** turns the renderer on.
-- **`CLAUDE_CODE_FORCE_SYNC_OUTPUT`** is needed under Rex. The renderer only runs on terminals Claude
-  knows can draw a frame in one go (synchronized output). Claude decides before Rex has answered its
-  question about that, and Rex isn't on its list of terminals assumed to, so without the variable it
-  quietly falls back to classic.
-
-These are Claude's settings, so they apply wherever Claude runs, at the desk too. Measured live on
-the phone with Claude Code 2.1.314:
-
-- **Scrolling** is as good as classic's: within 0.03 lines of the finger, flings glide, and your
-  place holds while Claude prints.
-- **History stays faithful.** The phone's copy matched the server's line for line, even across a
-  resize to 100 columns and back. Classic, in the same test, repeated 258 of its 300 lines.
-- **One bug, Claude's:** the first lines of a fast reply sometimes land blank in the history, from
-  3 to 24 lines in four replies from Haiku. Rex's own copy has the same gaps, so they come from
-  Claude, not the phone.
-
-With this on, Chompy sees no fullscreen Claude, so it doesn't offer the switch.
-
 ### Why part of Termux is still here
 
 Everything that decides what the terminal holds or sends is Ghostty's: parsing, the screen and
