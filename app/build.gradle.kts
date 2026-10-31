@@ -39,8 +39,8 @@ android {
         applicationId = "com.jeffarese.chompy"
         minSdk = 26
         targetSdk = 36
-        versionCode = 44
-        versionName = "0.4.5"
+        versionCode = 45
+        versionName = "0.4.6"
         buildConfigField("String", "DEFAULT_HOSTS", "\"${defaultHosts.replace("\"", "")}\"")
         // Only release builds update themselves: others are signed with another key, so couldn't.
         buildConfigField("String", "UPDATE_REPO", "\"\"")

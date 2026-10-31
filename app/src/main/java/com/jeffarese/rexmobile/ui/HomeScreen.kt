@@ -101,6 +101,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -196,6 +197,13 @@ fun HomeScreen(model: AppModel, onOpen: (Target) -> Unit, onHosts: () -> Unit, o
     // when the snackbar goes without an Undo, or Home does, so Undo has nothing to take back.
     val cleared = remember { mutableStateMapOf<String, Cleared>() }
     DisposableEffect(Unit) { onDispose { cleared.values.forEach { it.markSeen(model) } } }
+    // The board's cards on screen: the alerts they move for need no banner over them. A card scrolled away still gets one.
+    LaunchedEffect(list) {
+        snapshotFlow {
+            list.layoutInfo.visibleItemsInfo.mapNotNullTo(HashSet()) { (it.key as? String)?.removePrefix("agent-")?.takeIf { k -> k != it.key } }
+        }.collect { model.cardsOnScreen = it }
+    }
+    DisposableEffect(Unit) { onDispose { model.cardsOnScreen = emptySet() } }
     // Claude's prompts on the Needs you cards, read while Home shows them, and the answers under way.
     val prompts = remember { BoardPrompts() }
     val haptics = rememberViewHaptics()

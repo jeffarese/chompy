@@ -118,6 +118,9 @@ class AppModel(
     /** The block on screen, so its own alerts don't interrupt. */
     @Volatile var visibleBlockId: String? = null
 
+    /** The board's cards on screen on Home, as "hostId/blockId", so an alert one of them already shows needs no banner. */
+    @Volatile var cardsOnScreen: Set<String> = emptySet()
+
     /** How each return to the app went, for Settings to show. */
     val returnLog = ReturnLog(File(context.filesDir, "returns.txt"))
 

@@ -1,0 +1,1 @@
+On Home, an agent whose card is on screen no longer gets a banner as well: the card moving to its group says it. A card scrolled out of sight still gets one, and so does every alert elsewhere in the app, or with a screen reader on.

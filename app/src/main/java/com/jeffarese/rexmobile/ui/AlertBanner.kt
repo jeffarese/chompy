@@ -1,5 +1,6 @@
 package com.jeffarese.rexmobile.ui
 
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.fadeIn
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalAccessibilityManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.dismiss
@@ -61,10 +63,14 @@ fun AlertBanner(model: AppModel, onOpen: (Target) -> Unit) {
     var shownAt by remember { mutableStateOf(0L) }
     // How far the banner has been dragged up, in pixels: it follows the finger.
     var dragY by remember { mutableFloatStateOf(0f) }
+    val screenReader = LocalContext.current.getSystemService(AccessibilityManager::class.java)
     LaunchedEffect(Unit) {
         model.alerts.collect { a ->
             // Nothing from the pane on screen needs a banner, a question included: it is in front of you.
             if (a.blockId == model.visibleBlockId) return@collect
+            // Nor does an agent whose card is on screen on Home: the card shows it, moving to its group. A screen
+            // reader still gets the banner, as the banner is what says it aloud.
+            if ("${a.hostId}/${a.blockId}" in model.cardsOnScreen && screenReader?.isTouchExplorationEnabled != true) return@collect
             val showing = current
             if (showing == null) {
                 dragY = 0f
