@@ -123,6 +123,14 @@ a phone.
 | A drag on the phone | Scrolls the phone's copy, with no network | Goes to Claude as mouse-wheel events, and the phone waits for Claude to redraw |
 | Measured live | Within 0.03 lines of the finger; a fling glides; your place holds while Claude prints | 0.5 to 3.5 lines behind the finger, in whole-line jumps; a fling keeps redrawing for about a second after you let go |
 
+<p align="center">
+  <img src="docs/media/scroll-compare.gif" width="648" alt="The same Claude Code reply of 100 numbered lines, in classic on the left and fullscreen on the right, with the same finger movements on both: a slow drag back, a fling back and a fling forward. Classic follows the finger and glides after the fling. Fullscreen starts late, moves in jumps of whole lines, and keeps redrawing for over a second after the finger lifts.">
+</p>
+<p align="center"><sub>
+  The same drags and flings on both, on an emulator through a link with 245 ms round trip, about a
+  phone on mobile data (<a href="docs/media/scroll-compare.mp4">MP4, 60 fps</a>). The dot is the finger.
+</sub></p>
+
 Fullscreen is fine for glancing at the last reply. For reading back through a long conversation on
 the phone, classic is much better, and nothing on the phone can make fullscreen scroll the same way:
 there's no history in the terminal to scroll, only what Claude redraws.
