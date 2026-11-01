@@ -17,20 +17,35 @@ running the same engine as the Rex server, when one of them needs you.
 
 ## Get it
 
-- **[GitHub's releases](https://github.com/jeffarese/chompy/releases/latest).** Install the APK; from
-  then on the app finds new versions there itself and offers them on Home.
-- **Google Play**, once it is through Google's testing and review. Play will keep that one up to date.
+You need a [Rex](https://www.superlogical.com) server of your own that the phone can reach, for example
+over Tailscale, and a phone with a 64-bit ARM processor on Android 8 or later.
 
-Both are signed with the same key, so you'll be able to move from one to the other without
-uninstalling. To check an APK is Chompy's, `apksigner verify --print-certs chompy-<version>.apk`
+### Install
+
+1. On the phone, open the **[latest release](https://github.com/jeffarese/chompy/releases/latest)**
+   and download `chompy-<version>.apk` from its Assets.
+2. Open the download. Android asks to let your browser (or Files) install apps the first time:
+   allow it in the screen it opens, go back, and tap **Install**.
+3. Open Chompy. From then on it finds new versions on GitHub itself and offers them on Home.
+
+**Google Play** will have it too once it is through Google's testing and review, and Play will keep
+that one up to date. Both are signed with the same key, so you'll be able to move from one to the
+other without uninstalling. To check an APK is Chompy's, `apksigner verify --print-certs chompy-<version>.apk`
 should print this SHA-256 for the certificate:
 
 ```
 64:03:CD:23:09:07:AF:16:1F:18:22:B7:1B:DA:99:31:64:A5:C2:CB:84:7C:08:C1:84:F0:36:C3:89:2A:59:4A
 ```
 
-You need a [Rex](https://www.superlogical.com) server of your own that the phone can reach, for example
-over Tailscale, and a phone with a 64-bit ARM processor on Android 8 or later.
+### Connect to your Mac
+
+1. On the Mac, run `rex server tailscale pair` to show a pairing code.
+2. In Chompy's welcome, tap **Scan a pairing code** and point the camera at it. Or type the address
+   from Rex's Server settings, such as `mac-rex.tail1234.ts.net`.
+3. Tap **Connect**. The app checks it can reach the server before adding it. If it uses a tailnet
+   address, Tailscale has to be running on the phone too.
+
+More Macs go in the same way from Hosts (**+**, then **Scan pairing code** or an address).
 
 ## On a phone, the agents come first
 
