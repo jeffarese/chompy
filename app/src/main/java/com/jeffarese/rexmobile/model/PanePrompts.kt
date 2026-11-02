@@ -224,10 +224,11 @@ class PanePrompts {
          * True for a prompt that one press answers and that makes sense without the terminal: a
          * permission prompt that says what it is about, such as the command to run, or one of
          * Claude's questions on its own, with one answer to pick. A question among others, a
-         * multi-select one or the review of answers takes the terminal's card.
+         * multi-select one, one with previews or the review of answers takes the terminal's card.
          */
         internal fun answerable(prompt: ScreenPrompt): Boolean {
-            if (prompt.kind != ScreenPrompt.Kind.MENU || prompt.multiSelect || prompt.review.isNotEmpty()) return false
+            // A question with previews is asked to be answered looking at them.
+            if (prompt.kind != ScreenPrompt.Kind.MENU || prompt.multiSelect || prompt.review.isNotEmpty() || prompt.preview != null) return false
             val alone = if (prompt.claudeQuestion) prompt.tabs.singleOrNull()?.state == QuestionTab.State.OPEN else prompt.context.isNotEmpty()
             return alone && answersOf(prompt).isNotEmpty()
         }

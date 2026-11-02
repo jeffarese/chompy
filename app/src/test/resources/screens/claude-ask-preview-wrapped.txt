@@ -1,0 +1,31 @@
+# cursor_row=29 cursor_col=0 cols=46 rows=30
+  tool with exactly that JSON as its input.
+  Nothing else.
+
+  Read 1 file
+
+⏺ Now I'll call the AskUserQuestion tool with
+  that exact JSON:
+
+──────────────────────────────────────────────
+ ☐ Video
+
+What shape should the demo video be?
+
+❯   Phone in a frame +    ┌──────────┐
+ 1.captions               │ +------- │
+   (Recommended)          │ -------- │
+    Full-screen           │ -+       │
+ 2.vertical + captions    │ | Claude │
+  3. Landscape like       ├─── ✂ ─── 38 lines
+    the promo             hidden ┤
+                          └──────────┘
+
+                          Notes: press n to
+                                 add notes
+
+──────────────────────────────────────────────
+  Chat about this
+
+Enter to select · ↑/↓ to navigate · n to add
+notes · Esc to cancel

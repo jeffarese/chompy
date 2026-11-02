@@ -1056,6 +1056,16 @@ class RemoteTerminal(
     }
 
     /**
+     * Moves the highlight of the menu on screen to [option], with the arrow keys from where it is
+     * now, without answering: in one of Claude's questions with previews, that shows its preview.
+     */
+    fun highlight(prompt: ScreenPrompt, option: PromptOption) {
+        val current = _screenInfo.value.prompt
+        if (!streamLive || phase != Phase.LIVE || current == null || !current.sameQuestion(prompt)) return
+        current.moveKeys(prompt.options.indexOf(option))?.forEach(::sendKey)
+    }
+
+    /**
      * Moves one of Claude's questions to tab [index], from the tab on screen now, with the arrow keys
      * that page through its questions.
      */

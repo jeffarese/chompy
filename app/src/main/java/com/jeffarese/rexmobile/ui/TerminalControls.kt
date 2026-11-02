@@ -27,6 +27,9 @@ interface TerminalSink {
     /** Answer the prompt on screen. */
     fun choose(prompt: ScreenPrompt, option: PromptOption)
 
+    /** Move the highlight of the menu on screen to [option], as in one of Claude's questions with previews, to show its preview. */
+    fun highlight(prompt: ScreenPrompt, option: PromptOption) {}
+
     /** Go to another of the tabs over one of Claude's questions. */
     fun goToTab(prompt: ScreenPrompt, index: Int) {}
 
@@ -84,6 +87,8 @@ class TerminalControls(private val sink: TerminalSink, val modifiers: StickyModi
     fun cycleMode() = sink.key(KeyEvent.KEYCODE_TAB, shift = true)
 
     fun choose(prompt: ScreenPrompt, option: PromptOption) = sink.choose(prompt, option)
+
+    fun highlight(prompt: ScreenPrompt, option: PromptOption) = sink.highlight(prompt, option)
 
     fun goToTab(prompt: ScreenPrompt, index: Int) = sink.goToTab(prompt, index)
 

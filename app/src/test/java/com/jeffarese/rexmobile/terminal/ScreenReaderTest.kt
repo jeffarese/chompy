@@ -186,6 +186,93 @@ class ScreenReaderTest {
     }
 
     @Test
+    fun questionWithPreviewsAtPhoneWidth() {
+        // Claude Code 2.1.316: the options on the left, the highlighted one's preview boxed on the
+        // right, and "Chat about this" without a number.
+        val p = fixture("claude-ask-preview-phone").prompt!!
+        assertEquals("Which layout should the settings page use?", p.question)
+        assertTrue(p.claudeQuestion)
+        assertEquals(listOf("Layout"), p.tabs.map { it.label })
+        assertEquals(listOf("Sidebar", "Tabs", "One long page", "Chat about this"), p.options.map { it.label })
+        assertEquals(listOf(1, 2, 3, null), p.options.map { it.number })
+        assertEquals(listOf(true, false, false, false), p.options.map { it.selected })
+        val answer = PromptOption.Role.ANSWER
+        assertEquals(listOf(answer, answer, answer, PromptOption.Role.CHAT), p.options.map { it.role })
+        assertTrue(p.options.all { it.detail == null && it.checked == null })
+        assertFalse(p.multiSelect)
+        // The preview as the box shows it, wrapped to its width, with Claude's note of the lines it hides.
+        assertEquals(listOf("+-------", "-+------", "-----+", "| Agents", "✂ 12 lines hidden"), p.preview)
+        // A number here only moves the highlight, so the arrow keys pick an option, and Enter takes it.
+        assertEquals(listOf(RemoteKey.DOWN, RemoteKey.ENTER), p.menuKeys(1))
+        assertEquals(listOf(RemoteKey.DOWN, RemoteKey.DOWN, RemoteKey.DOWN, RemoteKey.ENTER), p.menuKeys(3))
+        assertEquals(listOf(RemoteKey.ENTER), p.menuKeys(0))
+        assertEquals(listOf(RemoteKey.DOWN, RemoteKey.DOWN), p.moveKeys(2))
+    }
+
+    @Test
+    fun questionWithPreviewsWhileChatAboutThisIsHighlighted() {
+        // The option highlighted last keeps its marker, as its preview stays; the highlight is on Chat about this.
+        val p = fixture("claude-ask-preview-chat").prompt!!
+        assertEquals(listOf("Sidebar", "Tabs", "One long page", "Chat about this"), p.options.map { it.label })
+        assertEquals(listOf(false, false, false, true), p.options.map { it.selected })
+        assertEquals("Agents", p.preview!!.first())
+        // Numbers do nothing from there.
+        assertEquals(listOf(RemoteKey.UP, RemoteKey.UP, RemoteKey.UP, RemoteKey.ENTER), p.menuKeys(0))
+        assertEquals(listOf(RemoteKey.ENTER), p.menuKeys(3))
+    }
+
+    @Test
+    fun questionWithPreviewsWhoseLabelsWrap() {
+        // At a phone's width Claude may put an option's number on a later line of its label.
+        val p = fixture("claude-ask-preview-wrapped").prompt!!
+        assertEquals("What shape should the demo video be?", p.question)
+        assertEquals(
+            listOf("Phone in a frame + captions (Recommended)", "Full-screen vertical + captions", "Landscape like the promo", "Chat about this"),
+            p.options.map { it.label },
+        )
+        assertEquals(listOf(1, 2, 3, null), p.options.map { it.number })
+        assertEquals(listOf(true, false, false, false), p.options.map { it.selected })
+        // A line of the box too long for the screen carries on next to the label under it.
+        assertEquals(listOf("+-------", "--------", "-+", "| Claude", "✂ 38 lines hidden"), p.preview)
+        // Questions without previews have none.
+        assertNull(fixture("claude-ask-colour").prompt!!.preview)
+        assertNull(fixture("claude-permission-bash").prompt!!.preview)
+    }
+
+    @Test
+    fun aPreviewThatDrawsBoxesOfItsOwn() {
+        // As a wide screen shows a question among others: the box inside the preview isn't the preview's own.
+        val lines = listOf(
+            "←  ☐ Format  ☐ Story  ✔ Submit  →",
+            "",
+            "│ What shape should the video be?",
+            "",
+            "❯ 1. Phone in a frame +           ┌────────────────────────┐",
+            "    captions (Recommended)        │ ┌──────────────┐       │",
+            "  2. Full-screen vertical         │ │  ┌────────┐  │       │",
+            "  3. Landscape                    │ │  │ app    │  │       │",
+            "                                  │ │  └────────┘  │       │",
+            "                                  │ └──────────────┘       │",
+            "                                  └────────────────────────┘",
+            "",
+            "                                  Notes: press n to add notes",
+            "",
+            "─".repeat(90),
+            "  Chat about this",
+            "",
+            "Enter to select · ↑/↓ to navigate · n to add notes · Tab to switch questions · Esc to cancel",
+        )
+        val p = ScreenReader.read(lines, lines.size - 1).prompt!!
+        assertEquals("What shape should the video be?", p.question)
+        assertEquals(listOf("Format", "Story", "Submit"), p.tabs.map { it.label })
+        assertEquals(
+            listOf("Phone in a frame + captions (Recommended)", "Full-screen vertical", "Landscape", "Chat about this"),
+            p.options.map { it.label },
+        )
+        assertEquals(listOf("┌──────────────┐", "│  ┌────────┐  │", "│  │ app    │  │", "│  └────────┘  │", "└──────────────┘"), p.preview)
+    }
+
+    @Test
     fun theTabOnScreenHasABackgroundOfItsOwn() {
         // As Claude Code draws it: black on lavender for the tab on screen.
         val on = "\u001b[38;2;0;0;0m\u001b[48;2;177;185;249m"

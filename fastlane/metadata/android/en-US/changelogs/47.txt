@@ -1,0 +1,1 @@
+Claude Code's questions whose options have previews get a card again, instead of only the yellow "needs you" box. As in Claude, tapping an option shows its preview, and Done (or Next) answers with it. "Chat about this" works from there too, and the card reads these questions at a phone's width, where Claude may wrap a label and put its number on the line below.

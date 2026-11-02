@@ -177,6 +177,31 @@ class LivePromptTest {
             waitFor("the answers sent", 30_000) { text().contains("deep purple") && info().prompt == null }
             waitFor("the turn to end", 60_000) { !info().interruptible && info().claudeMode != null && info().prompt == null }
 
+            // A question whose options have previews, as the card answers it: a tap moves the highlight
+            // to show another preview, and the answer goes from wherever the highlight is, Chat about
+            // this included, where Claude takes no numbers.
+            t.paste(
+                "Use the AskUserQuestion tool once, with one single-choice question with header \"Layout\" asking which " +
+                    "settings layout I prefer. Give it three options, labelled exactly Sidebar, Tabs and Long page, each " +
+                    "with a preview field holding a different 3-line ASCII sketch.",
+            )
+            t.sendKey(RemoteKey.ENTER)
+            waitFor("the question with previews", 90_000) { info().prompt?.preview != null }
+            val layouts = info().prompt!!
+            println("previews: $layouts")
+            assertEquals(listOf(1, 2, 3, null), layouts.options.map { it.number })
+            assertEquals(PromptOption.Role.CHAT, layouts.options.last().role)
+            fun picked() = info().prompt?.options?.firstOrNull { it.selected }?.label
+            t.highlight(layouts, layouts.options.first { it.label.equals("Tabs", ignoreCase = true) })
+            waitFor("Tabs highlighted") { picked().equals("Tabs", ignoreCase = true) }
+            assertTrue(info().prompt!!.preview != layouts.preview)
+            t.highlight(info().prompt!!, info().prompt!!.options.last())
+            waitFor("Chat about this highlighted") { info().prompt?.options?.last()?.selected == true }
+            val fromChat = info().prompt!!
+            t.choose(fromChat, fromChat.options.first { it.label.startsWith("Long", ignoreCase = true) })
+            waitFor("the answer", 30_000) { text().contains("→ Long", ignoreCase = true) }
+            waitFor("the turn to end", 60_000) { !info().interruptible && info().claudeMode != null && info().prompt == null }
+
             // Escape, sent as a key event, interrupts a turn. The spinner hides while the reply
             // streams, so this also relies on Claude Code reporting that it's working.
             t.paste("Write a 600-word essay about rivers as plain text. Don't use any tools.")

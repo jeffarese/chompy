@@ -17,7 +17,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -85,6 +87,15 @@ class PromptOverlayTest {
         )
     }
 
+    /** Claude's question with previews, the option at [highlight] highlighted, or Chat about this when null. */
+    private fun layouts(highlight: Int?) = ScreenPrompt(
+        ScreenPrompt.Kind.MENU, "Which layout should the settings page use?",
+        listOf("Sidebar", "Tabs").mapIndexed { i, l -> PromptOption(i + 1, l, selected = i == highlight) } +
+            PromptOption(null, "Chat about this", selected = highlight == null, role = PromptOption.Role.CHAT),
+        tabs = listOf(QuestionTab("Layout", QuestionTab.State.OPEN, current = true)),
+        preview = listOf(if (highlight == 1) "[Agents][Theme]" else "| Agents | Alerts |"),
+    )
+
     /** Lets a new card come up and take taps. */
     private fun settle() {
         rule.waitForIdle()
@@ -101,6 +112,7 @@ class PromptOverlayTest {
                     BottomOverlay(
                         info = info, live = live(), blocked = blocked, scrolledBack = { false }, onJump = {},
                         onChoose = { _, o -> chosen += o.label },
+                        onHighlight = { _, o -> chosen += "see ${o.label}" },
                         onTab = { _, i -> chosen += "tab $i" },
                         onOwn = { _, text -> chosen += "own $text" },
                         modifier = Modifier.align(Alignment.BottomCenter),
@@ -187,6 +199,34 @@ class PromptOverlayTest {
         rule.onNodeWithText("Green").performClick()
         assertEquals(listOf("tab 1", "Green"), chosen)
         assertEquals(0, underTaps)
+    }
+
+    @Test
+    fun aQuestionWithPreviewsShowsTheOnePickedAndAnswersWithIt() {
+        val info = mutableStateOf(ScreenInfo(prompt = layouts(0)))
+        show(info)
+        rule.onNodeWithText("| Agents | Alerts |").assertIsDisplayed()
+        rule.onNodeWithText("Sidebar").assertIsSelected()
+        // A tap moves Claude's highlight to show another preview: no answer, so the card stays.
+        rule.onNodeWithText("Tabs").performClick()
+        assertEquals(listOf("see Tabs"), chosen)
+        info.value = ScreenInfo(prompt = layouts(1))
+        rule.onNodeWithText("[Agents][Theme]").assertIsDisplayed()
+        rule.onNodeWithText("Tabs").assertIsSelected()
+        // Done answers with the one picked, and the card goes.
+        rule.onNodeWithText("Done").performClick()
+        assertEquals(listOf("see Tabs", "Tabs"), chosen)
+        rule.onNodeWithText("Which layout should the settings page use?").assertDoesNotExist()
+        assertEquals(0, underTaps)
+    }
+
+    @Test
+    fun aQuestionWithPreviewsWhileChatAboutThisIsHighlighted() {
+        show(mutableStateOf(ScreenInfo(prompt = layouts(null))))
+        // No option is picked, so there is nothing to answer with yet.
+        rule.onNodeWithText("Done").assertIsNotEnabled()
+        rule.onNodeWithText("Chat about this").performClick()
+        assertEquals(listOf("Chat about this"), chosen)
     }
 
     @Test

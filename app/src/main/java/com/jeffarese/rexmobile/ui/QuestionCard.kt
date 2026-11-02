@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -59,8 +60,10 @@ import com.jeffarese.rexmobile.terminal.ScreenPrompt
  * Claude's menu: its questions as tabs to move between, the answers, a field for an answer of one's
  * own, and, for a multi-select question, the ticks first and then one button to go on. Chat about
  * this is set apart, as Claude sets it apart. On the Submit tab, the answers given, each a way back
- * to its question, over Claude's own Submit and Cancel.
+ * to its question, over Claude's own Submit and Cancel. For a question whose options have previews,
+ * a tap picks an option as Claude's highlight does, showing its preview, and one button answers.
  *
+ * @param onHighlight moves Claude's highlight to an option, in a question with previews.
  * @param onTab moves to another tab, by index in the prompt's tabs.
  * @param onOwn answers in the user's own words.
  */
@@ -72,6 +75,7 @@ fun QuestionCard(
     onOwn: (String) -> Unit,
     onCollapse: () -> Unit,
     modifier: Modifier = Modifier,
+    onHighlight: (PromptOption) -> Unit = {},
     maxHeightFraction: Float = 0.7f,
 ) {
     val review = prompt.review.isNotEmpty() || prompt.currentTab?.let { prompt.tabs[it].state == QuestionTab.State.SUBMIT } == true
@@ -96,7 +100,11 @@ fun QuestionCard(
             IconButton(onClick = onCollapse) { Icon(Icons.Outlined.ExpandMore, "Hide the question", tint = Rex.textDim) }
         }
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(end = 10.dp)) {
-            if (review) ReviewBody(prompt, onChoose, onTab) else QuestionBody(prompt, onChoose, onOwn)
+            when {
+                review -> ReviewBody(prompt, onChoose, onTab)
+                prompt.preview != null -> PreviewBody(prompt, prompt.preview, onChoose, onHighlight)
+                else -> QuestionBody(prompt, onChoose, onOwn)
+            }
         }
     }
 }
@@ -167,6 +175,46 @@ private fun QuestionBody(prompt: ScreenPrompt, onChoose: (PromptOption) -> Unit,
                 PrimaryButton(if (nextIsQuestion(prompt)) "Next" else "Done") { onChoose(submit) }
             }
         }
+    }
+}
+
+/**
+ * A question whose options have previews. Claude shows the highlighted option's preview beside the
+ * options, and a number there only moves the highlight: here too a tap picks an option and shows its
+ * preview, and the button answers with it. While Claude's highlight is on "Chat about this", no
+ * option is picked, and its preview is the one shown last.
+ */
+@Composable
+private fun PreviewBody(prompt: ScreenPrompt, preview: List<String>, onChoose: (PromptOption) -> Unit, onHighlight: (PromptOption) -> Unit) {
+    val answers = prompt.options.filter { it.role == PromptOption.Role.ANSWER }
+    val chat = prompt.options.firstOrNull { it.role == PromptOption.Role.CHAT }
+    val picked = answers.firstOrNull { it.selected }
+    Text(
+        prompt.question ?: "Claude has a question", color = Rex.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
+    )
+    Text("Tap one to see its preview", color = Rex.textDim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 10.dp))
+    Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        answers.forEach { o -> OptionButton(o, radio = true) { onHighlight(o) } }
+    }
+    if (preview.isNotEmpty()) {
+        Text(
+            preview.joinToString("\n"), color = Rex.text, fontFamily = Rex.mono, fontSize = 12.sp, lineHeight = 15.sp, softWrap = false,
+            modifier = Modifier.padding(top = 10.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Rex.bg)
+                .horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp)
+                .semantics { contentDescription = "Preview" + (picked?.let { " of ${it.label}" } ?: "") + "\n" + preview.joinToString("\n") },
+        )
+    }
+    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (chat != null) {
+            Text(
+                chat.label, color = Rex.textDim, fontSize = 13.sp,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { onChoose(chat) }
+                    .padding(horizontal = 6.dp, vertical = 8.dp),
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        PrimaryButton(if (nextIsQuestion(prompt)) "Next" else "Done", enabled = picked != null) { picked?.let(onChoose) }
     }
 }
 
@@ -259,14 +307,14 @@ private fun ReviewBody(prompt: ScreenPrompt, onChoose: (PromptOption) -> Unit, o
 }
 
 @Composable
-private fun PrimaryButton(label: String, onClick: () -> Unit) {
+private fun PrimaryButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Box(
-        Modifier.heightIn(min = 42.dp).clip(shape).background(Rex.accent)
-            .clickable(role = Role.Button, onClick = onClick)
+        Modifier.heightIn(min = 42.dp).clip(shape).background(if (enabled) Rex.accent else Rex.keyBg)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Rex.onAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(label, color = if (enabled) Rex.onAccent else Rex.textDim, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
 }

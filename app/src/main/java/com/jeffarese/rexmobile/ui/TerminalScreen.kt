@@ -516,6 +516,7 @@ fun TerminalScreen(model: AppModel, target: Target, onBack: () -> Unit) {
                 scrolledBack = { scrolledBack },
                 onJump = viewport::scrollToBottom,
                 onChoose = controls::choose,
+                onHighlight = controls::highlight,
                 onTab = controls::goToTab,
                 onOwn = controls::answerOwn,
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -601,6 +602,7 @@ private class ScreenSink(private val viewport: TerminalViewport, private val ter
     }
     override fun paste(text: String) = sent { terminal?.paste(text) }
     override fun choose(prompt: ScreenPrompt, option: PromptOption) = sent { terminal?.choose(prompt, option) }
+    override fun highlight(prompt: ScreenPrompt, option: PromptOption) = sent { terminal?.highlight(prompt, option) }
     override fun goToTab(prompt: ScreenPrompt, index: Int) = sent { terminal?.goToTab(prompt, index) }
     override fun answerOwn(prompt: ScreenPrompt, text: String) = sent { terminal?.answerOwn(prompt, text) }
 
@@ -911,6 +913,7 @@ private const val FYI_PRESSED_MS = 3500L
  * screen while reading history. The cards show only while the screen is [live]. Touches on any of
  * it stay off the terminal, which would pass them to the program as mouse clicks.
  *
+ * @param onHighlight moves the highlight of one of Claude's questions with previews, to show another option's.
  * @param onTab moves one of Claude's questions to another of its tabs.
  * @param onOwn answers one of Claude's questions in the user's own words.
  * @param onFyi presses a button of the note.
@@ -926,6 +929,7 @@ internal fun BottomOverlay(
     onJump: () -> Unit,
     onChoose: (ScreenPrompt, PromptOption) -> Unit,
     modifier: Modifier = Modifier,
+    onHighlight: (ScreenPrompt, PromptOption) -> Unit = { _, _ -> },
     onTab: (ScreenPrompt, Int) -> Unit = { _, _ -> },
     onOwn: (ScreenPrompt, String) -> Unit = { _, _ -> },
     onFyi: (FyiNote, FyiAction) -> Unit = { _, _ -> },
@@ -1046,6 +1050,12 @@ internal fun BottomOverlay(
                     QuestionCard(
                         p,
                         onChoose = choose,
+                        // Shows another option's preview: no answer, so the card stays.
+                        onHighlight = highlight@{ option ->
+                            if (!live() || option.selected) return@highlight
+                            haptics.keyTap()
+                            onHighlight(p, option)
+                        },
                         onTab = tab@{ i ->
                             if (!live()) return@tab
                             onTab(p, i)
@@ -1139,11 +1149,11 @@ internal fun ScrollLagNote(onDismiss: () -> Unit, onNever: () -> Unit, modifier:
     }
 }
 
-/** The same prompt whatever its highlight, which the arrow keys sent to answer it move. */
+/** The same prompt whatever its highlight, which the arrow keys sent to answer it move, and with it the preview shown. */
 private fun ScreenPrompt.sameAs(other: ScreenPrompt): Boolean =
     this == other || unhighlighted() == other.unhighlighted()
 
-private fun ScreenPrompt.unhighlighted() = copy(options = options.map { it.copy(selected = false) })
+private fun ScreenPrompt.unhighlighted() = copy(options = options.map { it.copy(selected = false) }, preview = preview?.let { emptyList() })
 
 /** Takes taps that land here, so they don't reach the terminal under it as mouse clicks for the program. */
 internal fun Modifier.keepTapsOffTerminal(): Modifier = pointerInput(Unit) { detectTapGestures { } }

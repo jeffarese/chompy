@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -136,9 +137,12 @@ private fun PromptContext(lines: List<String>, modifier: Modifier = Modifier) {
     )
 }
 
-/** An answer. With [cursorOnly], as in a multi-select question, a highlighted option is only outlined. */
+/**
+ * An answer. With [cursorOnly], as in a multi-select question, a highlighted option is only outlined.
+ * With [radio], the highlighted option is the one picked among the others, and screen readers say so.
+ */
 @Composable
-internal fun OptionButton(option: PromptOption, cursorOnly: Boolean = false, onClick: () -> Unit) {
+internal fun OptionButton(option: PromptOption, cursorOnly: Boolean = false, radio: Boolean = false, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val strong = option.selected && !cursorOnly
     val checked = option.checked
@@ -148,8 +152,11 @@ internal fun OptionButton(option: PromptOption, cursorOnly: Boolean = false, onC
             .border(if (option.selected) 1.dp else 0.5.dp, if (option.selected) Rex.accent else Rex.divider, shape)
             .then(
                 // A tick box says whether it is ticked, to screen readers too.
-                if (checked != null) Modifier.toggleable(checked, role = Role.Checkbox, onValueChange = { onClick() })
-                else Modifier.clickable(role = Role.Button, onClick = onClick),
+                when {
+                    checked != null -> Modifier.toggleable(checked, role = Role.Checkbox, onValueChange = { onClick() })
+                    radio -> Modifier.selectable(option.selected, role = Role.RadioButton, onClick = onClick)
+                    else -> Modifier.clickable(role = Role.Button, onClick = onClick)
+                },
             )
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,

@@ -144,12 +144,17 @@ data class ScreenPrompt(
     val tabs: List<QuestionTab> = emptyList(),
     /** The answers Claude Code shows for review on its Submit tab, before they are sent. */
     val review: List<ReviewedAnswer> = emptyList(),
+    /**
+     * For one of Claude Code's questions whose options have previews, the preview it shows beside
+     * them, the highlighted option's, line by line as its box shows it; null for any other menu.
+     */
+    val preview: List<String>? = null,
 ) {
     /** True when picking an option ticks or unticks it, as in a multi-select question, rather than answering. */
     val multiSelect: Boolean get() = options.any { it.checked != null }
 
     /** True for a question Claude Code asks with its AskUserQuestion tool, rather than a permission prompt or another menu. */
-    val claudeQuestion: Boolean get() = tabs.isNotEmpty()
+    val claudeQuestion: Boolean get() = tabs.isNotEmpty() || preview != null
 
     /** The tab on screen, by index in [tabs]; null when the screen's colours weren't read. */
     val currentTab: Int? get() = tabs.indexOfFirst { it.current == true }.takeIf { it >= 0 }
@@ -158,15 +163,26 @@ data class ScreenPrompt(
      * The keys that pick option [index] of this menu as it is on screen. A numbered option is picked
      * by its number, which in Claude Code picks it at once (or ticks it, in a multi-select question)
      * whatever is highlighted; others are reached with the arrow keys from the highlighted one, then
-     * Enter. Null if there is no such option, or nothing is highlighted to count from.
+     * Enter. Beside previews a number only moves the highlight, and does nothing at all while "Chat
+     * about this" is highlighted, so every option there is reached with the arrow keys. Null if there
+     * is no such option, or nothing is highlighted to count from.
      */
     fun menuKeys(index: Int): List<RemoteKey>? {
         val number = (options.getOrNull(index) ?: return null).number
-        if (number != null && number in 1..9) return listOf(RemoteKey.digit(number))
-        // From the highlight on screen now, which may have moved since the option was offered.
+        if (preview == null && number != null && number in 1..9) return listOf(RemoteKey.digit(number))
+        return moveKeys(index)?.plus(RemoteKey.ENTER)
+    }
+
+    /**
+     * The arrow keys that move the highlight to option [index] from the one highlighted on screen now,
+     * which may have moved since the option was offered: in a question with previews, to show that
+     * option's preview. Null if there is no such option, or nothing is highlighted to count from.
+     */
+    fun moveKeys(index: Int): List<RemoteKey>? {
+        if (index !in options.indices) return null
         val from = options.indexOfFirst { it.selected }
         if (from < 0) return null
-        return List(abs(index - from)) { if (index > from) RemoteKey.DOWN else RemoteKey.UP } + RemoteKey.ENTER
+        return List(abs(index - from)) { if (index > from) RemoteKey.DOWN else RemoteKey.UP }
     }
 
     enum class Kind {
@@ -290,7 +306,7 @@ object ScreenReader {
         val yesNoLine = cursorLine?.replace('\u00a0', ' ') ?: rows.getOrNull(cursorRow)?.text
         val fyi = box?.let { fyiOf(lines, rows, it.first, columns, style = style) }
         return ScreenInfo(
-            prompt = readMenu(rows, style) ?: yesNoLine?.let(::readYesNo),
+            prompt = readPreviewQuestion(lines, rows, style) ?: readMenu(rows, style) ?: yesNoLine?.let(::readYesNo),
             claudeMode = footer.firstNotNullOfOrNull(::modeOf),
             claudeEffort = effortOf(rows.map { it.text }, bottom, footer),
             interruptible = bottom.any { it.contains("esc to interrupt", ignoreCase = true) || SPINNER.matches(it) },
@@ -519,6 +535,123 @@ object ScreenReader {
             if (!r.blank) prev = r
         }
         return out.mapNotNull { (q, a) -> a?.let { ReviewedAnswer(q.toString(), it.toString()) } }
+    }
+
+    // ---- Claude Code's questions with previews ----
+
+    /**
+     * The top of a preview's box, two spaces or more right of the first option: "❯ 1. Sidebar      ┌───".
+     * Not a box drawn inside the preview, which has the preview's side to its left.
+     */
+    private val PREVIEW_TOP = Regex("""^( *[^ │┃┌╭├└╰][^│┃┌╭├└╰]*?) {2,}([┌╭])─""")
+    /** An option's row in the column beside a preview: maybe the highlight, maybe its number, then its label or part of it. */
+    private val PREVIEW_OPTION = Regex("""^( *)([$MARKERS])? *(?:(\d{1,2})\.)? *(.*)$""")
+    /** The farthest an option's number sits from the left edge; its label's wrapped lines start further in. */
+    private const val PREVIEW_NUMBER_COL = 2
+
+    /**
+     * One of Claude's questions whose options have previews. Claude draws those in two columns: the
+     * options on the left, numbered but without descriptions or "Type something.", and on the right
+     * the highlighted option's preview in a box, with "Notes: press n to add notes" under it; then,
+     * under a rule, "Chat about this" without a number.
+     *
+     * At a phone's width a label wraps, and Claude may then put the option's number on a later line of
+     * it: "❯   Phone in a frame +", " 1.captions", "   (Recommended)". So each line of the left column
+     * goes with the option whose number is on the nearest line, the one above on a tie. While "Chat
+     * about this" is highlighted, the option highlighted last keeps its marker, as its preview stays.
+     */
+    private fun readPreviewQuestion(lines: List<String>, rows: List<Row>, style: ((row: Int, index: Int) -> Long)?): ScreenPrompt? {
+        val top = lines.indexOfLast { PREVIEW_TOP.containsMatchIn(it) }
+        if (top < 0) return null
+        val col = PREVIEW_TOP.find(lines[top])!!.groups[2]!!.range.first
+        // Each row split where the box starts, which may stray a column or two from the top's.
+        val left = mutableListOf<String>()
+        val shown = mutableListOf<StringBuilder>()
+        val dividers = mutableSetOf<Int>()
+        var closed = false
+        var rule = -1
+        for (i in top until lines.size) {
+            // The rule over "Chat about this" starts at the left edge; a row of the box that only
+            // draws a line, "│ ──────── │", doesn't.
+            if (rows[i].rule && rows[i].indent < col - 2) {
+                rule = i
+                break
+            }
+            val line = lines[i]
+            val at = (maxOf(1, col - 2)..minOf(line.length - 1, col + 2)).firstOrNull { k ->
+                line[k] != ' ' && line.substring(0, k).let { it.isBlank() || it.endsWith("  ") }
+            }
+            val right = at?.let { line.substring(it) }
+            left += when {
+                at != null -> line.substring(0, at).trimEnd()
+                // Right of the box: a wrapped line of it, or the line about notes under it.
+                line.indexOfFirst { it != ' ' } >= col - 2 -> ""
+                else -> line
+            }
+            if (right == null || closed) continue
+            when (right[0]) {
+                '┌', '╭' -> if (i != top) return null
+                '│' -> shown += StringBuilder(right.drop(1))
+                // A line Claude draws across the box for the lines it hides: "├─── ✂ ─── 12 lines hidden ┤".
+                '├' -> {
+                    dividers += shown.size
+                    shown += StringBuilder(right.drop(1))
+                }
+                '└', '╰' -> closed = true
+                // A line of the box too long for the screen, carried on onto the next row.
+                else -> shown.lastOrNull()?.append(' ')?.append(right) ?: return null
+            }
+        }
+        if (!closed || rule < 0 || shown.isEmpty()) return null
+        val preview = shown.mapIndexed { k, sb ->
+            val s = sb.toString().trimEnd().removeSuffix("│").removeSuffix("┤").trimEnd()
+            if (k in dividers) s.replace(Regex("[─┤]+"), " ").trim().replace(Regex(" {2,}"), " ") else s.removePrefix(" ")
+        }
+
+        // The options: the rows that hold a number, and each other line to the nearest of them.
+        class Line(val row: Int, val marked: Boolean, val number: Int?, val text: String)
+        val parts = left.mapIndexedNotNull { k, text ->
+            if (text.isBlank()) return@mapIndexedNotNull null
+            val m = PREVIEW_OPTION.matchEntire(text) ?: return@mapIndexedNotNull null
+            val numberAt = m.groups[3]?.range?.first
+            val number = m.groups[3]?.value?.toInt()?.takeIf { numberAt!! <= PREVIEW_NUMBER_COL }
+            val marked = m.groups[2] != null && m.groups[1]!!.value.length <= 1
+            Line(k, marked, number, if (number != null || marked) m.groupValues[4].trim() else text.trim())
+        }
+        val numbered = parts.filter { it.number != null }
+        if (numbered.size < 2 || numbered.map { it.number } != (1..numbered.size).toList()) return null
+        val owner = parts.associateWith { p ->
+            p.number ?: numbered.minWith(compareBy<Line> { abs(it.row - p.row) }.thenBy { it.row }).number!!
+        }
+        val options = numbered.map { n ->
+            val own = parts.filter { owner[it] == n.number }
+            PromptOption(n.number, own.joinToString(" ") { it.text }.trim(), selected = own.any { it.marked })
+        }.toMutableList()
+
+        // "Chat about this", then nothing but key hints.
+        var chatRow = rule + 1
+        while (chatRow < rows.size && rows[chatRow].blank) chatRow++
+        val chat = rows.getOrNull(chatRow)?.text?.takeIf { t -> HINTS.none { it in t.lowercase() } }
+        val tailFrom = if (chat != null) chatRow + 1 else rule + 1
+        if (!onlyHints(rows.subList(minOf(tailFrom, rows.size), rows.size), rows.maxOf { it.text.length })) return null
+        if (chat != null) {
+            val m = PREVIEW_OPTION.matchEntire(chat)!!
+            val focused = m.groups[2] != null
+            if (focused) options.replaceAll { it.copy(selected = false) }
+            options += PromptOption(null, m.groupValues[4].trim(), selected = focused, role = PromptOption.Role.CHAT)
+        }
+        if (options.count { it.selected } != 1) return null
+
+        val width = rows.maxOf { it.text.length }
+        val above = paragraphsAbove(rows, top)
+        val tabsRow = tabsAbove(rows, top)
+        return ScreenPrompt(
+            ScreenPrompt.Kind.MENU,
+            questionIn(rows, above, width),
+            options,
+            tabs = tabsRow?.let { readTabs(rows[it].text, it, style) }.orEmpty(),
+            preview = preview,
+        )
     }
 
     /**
