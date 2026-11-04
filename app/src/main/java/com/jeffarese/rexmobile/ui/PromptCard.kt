@@ -48,6 +48,9 @@ import com.jeffarese.rexmobile.terminal.ScreenPrompt
 
 internal val CardShape = RoundedCornerShape(18.dp)
 
+/** What an option above the top of the screen says, when its label isn't known. */
+internal const val UNSEEN_OPTION = "Above the top of the screen"
+
 /**
  * The question on screen with a button per answer, over the bottom of the terminal.
  * It is at most [maxHeightFraction] of the space it's given, and scrolls when there are many options.
@@ -177,7 +180,9 @@ internal fun OptionButton(option: PromptOption, cursorOnly: Boolean = false, rad
             Spacer(Modifier.width(11.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(option.label, color = Rex.text, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            // An option above the top of Claude's screen, whose label Claude didn't say: its number still picks it.
+            if (option.hidden && option.label.isBlank()) Text(UNSEEN_OPTION, color = Rex.textDim, fontSize = 14.sp, maxLines = 2)
+            else Text(option.label, color = Rex.text, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
             option.detail?.takeIf { it.isNotBlank() }?.let {
                 Text(it, color = Rex.textDim, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }

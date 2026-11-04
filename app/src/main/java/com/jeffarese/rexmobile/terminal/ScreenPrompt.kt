@@ -153,8 +153,38 @@ data class ScreenPrompt(
     /** True when picking an option ticks or unticks it, as in a multi-select question, rather than answering. */
     val multiSelect: Boolean get() = options.any { it.checked != null }
 
-    /** True for a question Claude Code asks with its AskUserQuestion tool, rather than a permission prompt or another menu. */
-    val claudeQuestion: Boolean get() = tabs.isNotEmpty() || preview != null
+    /**
+     * True for a question Claude Code asks with its AskUserQuestion tool, rather than a permission prompt or another menu:
+     * its tabs, its previews, or, when the screen is too short for its top, its "Chat about this".
+     */
+    val claudeQuestion: Boolean get() = tabs.isNotEmpty() || preview != null || options.any { it.role == PromptOption.Role.CHAT }
+
+    /** The end of [question] in at most about [max] characters, from the start of a sentence, for where only a line or two fits. */
+    fun questionEnd(max: Int = 200): String? {
+        val q = question?.substringAfterLast('\n')?.trim() ?: return null
+        if (q.length <= max) return q
+        val starts = Regex("""[.?!:;] +(?=\S)""").findAll(q).map { it.range.last + 1 }
+        val from = starts.firstOrNull { q.length - it <= max } ?: return "…" + q.takeLast(max).trimStart()
+        return "…" + q.substring(from)
+    }
+
+    /**
+     * This prompt with what Claude Code told Rex it asks filled in, if it cut off the top of the screen:
+     * the question, and the labels of the options above the screen. Only when the answers on screen are
+     * the ones [asked] gives the same numbers, as Rex only hears of a question set's first question.
+     */
+    fun withAsked(asked: AskedQuestion?): ScreenPrompt {
+        if (asked == null || kind != Kind.MENU || tabs.isNotEmpty() || !claudeQuestion || review.isNotEmpty()) return this
+        val answers = options.filter { it.role == PromptOption.Role.ANSWER }
+        if (answers.size != asked.labels.size || answers.withIndex().any { (k, o) -> o.number != k + 1 }) return this
+        val seen = answers.filter { !it.hidden }
+        if (seen.isEmpty() || seen.any { squash(it.label) != squash(asked.labels[it.number!! - 1]) }) return this
+        if (question != null && !squash(asked.question).endsWith(squash(question))) return this
+        return copy(
+            question = asked.question,
+            options = options.map { o -> if (o.hidden && o.role == PromptOption.Role.ANSWER) o.copy(label = asked.labels[o.number!! - 1]) else o },
+        )
+    }
 
     /** The tab on screen, by index in [tabs]; null when the screen's colours weren't read. */
     val currentTab: Int? get() = tabs.indexOfFirst { it.current == true }.takeIf { it >= 0 }
@@ -193,6 +223,43 @@ data class ScreenPrompt(
     }
 }
 
+/**
+ * What Claude Code tells Rex while it waits on one of its questions, "answer: <question> (<label> ·
+ * <label> · …)": the question and its options' labels, numbered from 1 in that order. Of a set of
+ * questions, the first only, whichever is on screen.
+ */
+data class AskedQuestion(val question: String, val labels: List<String>) {
+    companion object {
+        private const val PREFIX = "answer:"
+
+        /** Rex's status message for a question; null for any other. */
+        fun parse(msg: String?): AskedQuestion? {
+            val text = msg?.trim()?.takeIf { it.startsWith(PREFIX) }?.removePrefix(PREFIX)?.trim() ?: return null
+            if (!text.endsWith(")")) return null
+            // The labels are in the last parentheses, which may hold some of their own, as "(Recommended)".
+            var depth = 0
+            var open = -1
+            for (k in text.indices.reversed()) {
+                when (text[k]) {
+                    ')' -> depth++
+                    '(' -> if (--depth == 0) {
+                        open = k
+                        break
+                    }
+                }
+            }
+            if (open <= 0) return null
+            val question = text.substring(0, open).trim()
+            val labels = text.substring(open + 1, text.length - 1).split(" · ").map { it.trim() }
+            if (question.isEmpty() || labels.isEmpty() || labels.any { it.isEmpty() }) return null
+            return AskedQuestion(question, labels)
+        }
+    }
+}
+
+/** [text] without its spaces, to compare what wrapping may have joined with or without one. */
+private fun squash(text: String) = text.filterNot { it.isWhitespace() }
+
 /** A tab over one of Claude Code's questions. */
 data class QuestionTab(
     val label: String,
@@ -227,6 +294,11 @@ data class PromptOption(
     val answer: String? = null,
     /** What the option does in one of Claude Code's questions; [Role.ANSWER] in any other menu. */
     val role: Role = Role.ANSWER,
+    /**
+     * True for an option above the top of the screen, as when a long question doesn't fit it: only
+     * its number is known, and its label is blank unless Claude told Rex what it is.
+     */
+    val hidden: Boolean = false,
 ) {
     enum class Role {
         /** One of the answers offered. */
@@ -240,7 +312,7 @@ data class PromptOption(
     }
 
     /** The answer typed into an [Role.OWN] option, if any. */
-    val typed: String? get() = label.takeIf { role == Role.OWN && !OWN_PLACEHOLDER.matches(it) }
+    val typed: String? get() = label.takeIf { role == Role.OWN && !hidden && !OWN_PLACEHOLDER.matches(it) }
 
     companion object {
         /** What an [Role.OWN] option shows until something is typed into it. */
@@ -376,14 +448,20 @@ object ScreenReader {
         if (lastIdx < 0) return null
         val last = OPTION.find(rows[lastIdx].text)!!
         val numberCol = last.groups[3]!!.range.first
-        // Walk up to option 1. Every line between two options must belong to the one above it.
+        // Walk up to option 1. Every line between two options must belong to the one above it. A menu
+        // taller than the screen, as a long question of Claude's on a phone, runs off its top: the
+        // options numbered below the first one on screen are above it.
         var expected = last.groupValues[3].toInt()
         if (expected < 2) return null
         var first = lastIdx
         var blanks = 0
         var i = lastIdx - 1
+        var hidden = 0
         while (expected > 1) {
-            if (i < 0) return null
+            if (i < 0) {
+                hidden = expected - 1
+                break
+            }
             val r = rows[i]
             val m = OPTION.find(r.text)
             when {
@@ -444,21 +522,45 @@ object ScreenReader {
             if (!r.blank && !r.rule) afterBlank = false
             j++
         }
-        if (items.count { it.selected } != 1) return null
+        // Off the top of the screen, the highlight may be too.
+        val highlighted = items.count { it.selected }
+        if (highlighted > 1 || (highlighted == 0 && hidden == 0)) return null
         if (!onlyHints(rows.subList(j, rows.size), width)) return null
-        val above = paragraphsAbove(rows, first)
+        val options = List(hidden) { PromptOption(it + 1, "", hidden = true) } + items.map { it.toOption() }
+        // Claude's question has "Chat about this" last, under a rule, even when its tabs are off the screen.
+        val asks = options.lastOrNull { it.number != null }?.label == CHAT
+        if (hidden > 0) {
+            // What is above it on screen is the end of an option; the question, the tabs and the
+            // rest of the options are further up. Only Claude's questions are that tall: any other
+            // list running off the top isn't taken for a menu.
+            if (!asks) return null
+            return ScreenPrompt(ScreenPrompt.Kind.MENU, null, withRoles(options))
+        }
+        val above = paragraphsAbove(rows, first, max = MAX_PARAGRAPHS)
         val tabsRow = tabsAbove(rows, first)
         val tabs = tabsRow?.let { readTabs(rows[it].text, it, style) }.orEmpty()
-        val options = items.map { it.toOption() }
+        val review = if (tabsRow == null) emptyList() else reviewIn(rows, tabsRow + 1, above.firstOrNull()?.first ?: first, width)
+        // Claude's question whole, every paragraph of it, from its tabs or the top of the screen. Not
+        // its review, which is a menu of its own without "Chat about this".
+        val question = if (asks && review.isEmpty()) wholeQuestion(rows, above.filter { tabsRow == null || it.first > tabsRow }, width)
+        else questionIn(rows, above.take(4), width)
         return ScreenPrompt(
             ScreenPrompt.Kind.MENU,
-            questionIn(rows, above, width),
-            if (tabs.isEmpty()) options else withRoles(options),
-            above.firstOrNull()?.let { contextAbove(rows, it.first, width) }.orEmpty(),
+            question,
+            if (tabs.isEmpty() && !asks) options else withRoles(options),
+            if (asks || tabs.isNotEmpty()) emptyList() else above.firstOrNull()?.let { contextAbove(rows, it.first, width) }.orEmpty(),
             tabs,
-            if (tabsRow == null) emptyList() else reviewIn(rows, tabsRow + 1, above.firstOrNull()?.first ?: first, width),
+            review,
         )
     }
+
+    private const val CHAT = "Chat about this"
+    /** The most paragraphs one of Claude's questions is read as. */
+    private const val MAX_PARAGRAPHS = 12
+
+    /** One of Claude's questions from its paragraphs, nearest first: in order, each joined where it wrapped, a line apart. */
+    private fun wholeQuestion(rows: List<Row>, paragraphs: List<IntRange>, width: Int): String? =
+        paragraphs.asReversed().joinToString("\n") { paragraphText(rows, it, width) }.ifBlank { null }
 
     // ---- Claude Code's AskUserQuestion ----
 
@@ -503,7 +605,7 @@ object ScreenReader {
      * "Type something." or what has been typed into it.
      */
     private fun withRoles(options: List<PromptOption>): List<PromptOption> {
-        val chat = options.indexOfLast { it.number != null && it.label == "Chat about this" }
+        val chat = options.indexOfLast { it.number != null && it.label == CHAT }
         val own = if (chat > 0) options.subList(0, chat).indexOfLast { it.number != null }
         else options.indexOfLast { PromptOption.OWN_PLACEHOLDER.matches(it.label) }
         return options.mapIndexed { i, o ->
@@ -643,11 +745,11 @@ object ScreenReader {
         if (options.count { it.selected } != 1) return null
 
         val width = rows.maxOf { it.text.length }
-        val above = paragraphsAbove(rows, top)
+        val above = paragraphsAbove(rows, top, max = MAX_PARAGRAPHS)
         val tabsRow = tabsAbove(rows, top)
         return ScreenPrompt(
             ScreenPrompt.Kind.MENU,
-            questionIn(rows, above, width),
+            wholeQuestion(rows, above.filter { tabsRow == null || it.first > tabsRow }, width),
             options,
             tabs = tabsRow?.let { readTabs(rows[it].text, it, style) }.orEmpty(),
             preview = preview,

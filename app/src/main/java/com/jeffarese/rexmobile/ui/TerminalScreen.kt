@@ -999,7 +999,8 @@ internal fun BottomOverlay(
         if (fyi != null && !fyi.complete && !fyiCollapsed) onReadFyi()
     }
     // A new question opens the card again; the highlight or ticks changing within the same one don't.
-    val key = prompt?.let { p -> Triple(p.question, p.options.map { it.label }, p.context) }
+    // However the question wrapped, or whether Rex filled in its top, as the keyboard shrinks the screen and back.
+    val key = prompt?.let { p -> Triple(p.question?.filterNot { it.isWhitespace() }, p.options.map { it.label }, p.context) }
     var collapsed by remember(key) { mutableStateOf(false) }
     // The prompt as it was when answered. While the screen still shows it, the card is hidden and
     // ignores taps, so a double tap can't answer twice; it comes back after a while in case the

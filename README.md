@@ -28,9 +28,9 @@ over Tailscale, and a phone with a 64-bit ARM processor on Android 8 or later.
    allow it in the screen it opens, go back, and tap **Install**.
 3. Open Chompy. From then on it finds new versions on GitHub itself and offers them on Home.
 
-**Google Play** will have it too once it is through Google's testing and review, and Play will keep
-that one up to date. Both are signed with the same key, so you'll be able to move from one to the
-other without uninstalling. To check an APK is Chompy's, `apksigner verify --print-certs chompy-<version>.apk`
+Or get it from **[Google Play](https://play.google.com/store/apps/details?id=com.jeffarese.chompy)**,
+which keeps that one up to date and may be a version behind while Google reviews the latest. Both are
+signed with the same key, so you can move from one to the other without uninstalling. To check an APK is Chompy's, `apksigner verify --print-certs chompy-<version>.apk`
 should print this SHA-256 for the certificate:
 
 ```

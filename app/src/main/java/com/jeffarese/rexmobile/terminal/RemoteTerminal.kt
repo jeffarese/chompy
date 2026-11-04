@@ -8,6 +8,7 @@ import com.jeffarese.rexmobile.model.HostConnection
 import com.jeffarese.rexmobile.rex.BlockStream
 import com.jeffarese.rexmobile.rex.BlockStreamListener
 import com.jeffarese.rexmobile.rex.FormatResult
+import com.jeffarese.rexmobile.rex.ProgramStatus
 import com.jeffarese.rexmobile.rex.RexCallException
 import com.jeffarese.rexmobile.rex.RexJson
 import com.jeffarese.rexmobile.rex.StreamState
@@ -222,6 +223,8 @@ class RemoteTerminal(
     private var readBy = 0L // when a pending read must run at the latest; 0 if none is pending
     private var lastRead = ScreenInfo()
     private var programWorking = false
+    /** What Claude told Rex it asks, while it waits on one of its questions. */
+    private var asked: AskedQuestion? = null
     /** True while the stream is live, so the screen keeps up with the block. */
     private var streamLive = false
     /** The screen changed while no view showed it, so it is read once one does. */
@@ -311,6 +314,14 @@ class RemoteTerminal(
                 .distinctUntilChanged()
                 .collect {
                     programWorking = it
+                    publishScreenInfo(lastRead)
+                }
+        }
+        scope.launch {
+            host.state.map { st -> askedOf(st.blocks[blockId]?.statuses.orEmpty()) }
+                .distinctUntilChanged()
+                .collect {
+                    asked = it
                     publishScreenInfo(lastRead)
                 }
         }
@@ -764,7 +775,9 @@ class RemoteTerminal(
     private fun publishScreenInfo(read: ScreenInfo) {
         if (read.survey != null && read.survey != lastRead.survey) surveySince = SystemClock.uptimeMillis()
         lastRead = read
-        _screenInfo.value = if (programWorking && !read.interruptible) read.copy(interruptible = true) else read
+        // A question too tall for the screen has its top filled in from what Claude told Rex it asks.
+        val info = read.prompt?.withAsked(asked)?.let { if (it == read.prompt) read else read.copy(prompt = it) } ?: read
+        _screenInfo.value = if (programWorking && !info.interruptible) info.copy(interruptible = true) else info
     }
 
     /** Read the screen 120 ms after output settles, and at least every 400 ms while it keeps coming. */
@@ -1089,8 +1102,15 @@ class RemoteTerminal(
         val own = current.options.indexOfFirst { it.role == PromptOption.Role.OWN }
         val from = current.options.indexOfFirst { it.selected }
         val line = text.replace(Regex("""\s*\n\s*"""), " ").trim()
-        if (own < 0 || from < 0 || line.isEmpty()) return
-        repeat(abs(own - from)) { sendKey(if (own > from) RemoteKey.DOWN else RemoteKey.UP) }
+        if (own < 0 || line.isEmpty()) return
+        val option = current.options[own]
+        when {
+            from >= 0 -> repeat(abs(own - from)) { sendKey(if (own > from) RemoteKey.DOWN else RemoteKey.UP) }
+            // With the highlight off the top of the screen, a single choice's empty option is reached by its
+            // number, which only highlights it: one with text in it would be answered with that.
+            !current.multiSelect && !option.hidden && option.typed == null && option.number in 1..9 -> sendKey(RemoteKey.digit(option.number!!))
+            else -> return
+        }
         current.options[own].typed?.let { old -> typeBytes(ByteArray(old.codePointCount(0, old.length)) { 0x7f }) }
         typeText(line)
         if (!current.multiSelect) sendKey(RemoteKey.ENTER)
@@ -1670,3 +1690,7 @@ private class SessionClient(private val view: () -> TerminalView?) : TerminalSes
     override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) = Unit
     override fun logStackTrace(tag: String?, e: Exception?) = Unit
 }
+
+/** The question a program in the pane says it waits on, as Claude Code tells Rex: see [AskedQuestion]. */
+internal fun askedOf(statuses: List<ProgramStatus>): AskedQuestion? =
+    statuses.firstNotNullOfOrNull { s -> s.takeIf { it.state == "blocked" && it.kind == "question" }?.msg?.let(AskedQuestion::parse) }

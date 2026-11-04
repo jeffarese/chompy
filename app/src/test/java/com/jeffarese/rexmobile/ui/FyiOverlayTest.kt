@@ -172,6 +172,20 @@ class FyiOverlayTest {
     }
 
     @Test
+    fun understoodStaysFirstAndFilledWhenTheNoteLinksAPage() {
+        // A link in the explanation used to put "Open page" first, filled in Understood's place, and Understood outlined.
+        val linked = note("claude-fyi-explained") { it.replace("  signingConfig release in the build log.", "  https://example.com/keys has more.") }
+        assertEquals("https://example.com/keys", linked.link)
+        show(mutableStateOf(ScreenInfo(claudeInput = "", fyi = linked)))
+        rule.mainClock.advanceTimeBy(800)
+        val understood = rule.onNodeWithText("Understood").getUnclippedBoundsInRoot()
+        val page = rule.onNodeWithText("Open page").getUnclippedBoundsInRoot()
+        assertTrue(understood.top < page.top || (understood.top == page.top && understood.left < page.left))
+        assertEquals(listOf(NoteButtonKind.PRIMARY, NoteButtonKind.SECONDARY), linked.actions.filter { it.key != 0 }.mapIndexed { i, a -> noteButtonKind(i, a.label) })
+        assertEquals(NoteButtonKind.WARN, noteButtonKind(0, "Press again to dismiss"))
+    }
+
+    @Test
     fun theNoteFoldsAway() {
         show(mutableStateOf(ScreenInfo(claudeInput = "", fyi = offer)))
         rule.mainClock.advanceTimeBy(800)
@@ -181,8 +195,8 @@ class FyiOverlayTest {
         rule.onNodeWithText("Learn more").assertIsDisplayed()
     }
 
-    private fun note(name: String): FyiNote {
-        val text = javaClass.classLoader!!.getResource("screens/$name.txt")!!.readText()
+    private fun note(name: String, edit: (String) -> String = { it }): FyiNote {
+        val text = edit(javaClass.classLoader!!.getResource("screens/$name.txt")!!.readText())
         val header = text.substringBefore('\n')
         val cursorRow = Regex("""cursor_row=(\d+)""").find(header)!!.groupValues[1].toInt()
         val rows = Regex("""rows=(\d+)""").find(header)!!.groupValues[1].toInt()

@@ -157,19 +157,15 @@ fun FyiCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // Claude's buttons in its order, the first always filled, as Understood is; a page the
+                // note links to after them, so it never takes that place.
+                buttons.forEachIndexed { i, a ->
+                    NoteButton(a.label, noteButtonKind(i, a.label), enabled, working = pressed == a) { onPress(a) }
+                }
                 note.link?.let { url ->
-                    NoteButton("Open page", Kind.LINK, enabled = true, working = false) {
+                    NoteButton("Open page", NoteButtonKind.LINK, enabled = true, working = false) {
                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     }
-                }
-                buttons.forEach { a ->
-                    val kind = when {
-                        a.label.startsWith("Press again", ignoreCase = true) -> Kind.WARN
-                        a == buttons.first() && note.link == null -> Kind.PRIMARY
-                        a == buttons.getOrNull(1) || (a == buttons.first() && note.link != null) -> Kind.SECONDARY
-                        else -> Kind.QUIET
-                    }
-                    NoteButton(a.label, kind, enabled, working = pressed == a) { onPress(a) }
                 }
             }
         }
@@ -226,12 +222,12 @@ fun SurveyCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             survey.link?.let { url ->
-                NoteButton("Open page", Kind.LINK, enabled = true, working = false) {
+                NoteButton("Open page", NoteButtonKind.LINK, enabled = true, working = false) {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 }
             }
             (survey.answers - setOfNotNull(dismiss)).forEach { a ->
-                NoteButton(a.label, Kind.SECONDARY, enabled, working = pressed == a) { onAnswer(a) }
+                NoteButton(a.label, NoteButtonKind.SECONDARY, enabled, working = pressed == a) { onAnswer(a) }
             }
         }
     }
@@ -268,36 +264,48 @@ fun CollapsedFyi(note: FyiNote, onExpand: () -> Unit, modifier: Modifier = Modif
 
 private fun tagColor(tag: String?) = if (tag.equals("Heads up", ignoreCase = true)) Rex.blocked else FyiAccent
 
-private enum class Kind { PRIMARY, SECONDARY, QUIET, WARN, LINK }
+/** How a note's or a survey's button looks: filled, outlined, plain text, a warning, or a link out. */
+internal enum class NoteButtonKind { PRIMARY, SECONDARY, QUIET, WARN, LINK }
+
+/**
+ * How the note's button [index] among Claude's buttons looks, Dismiss aside: the first filled, the
+ * second outlined, the rest quieter, and "Press again…" as the warning it is.
+ */
+internal fun noteButtonKind(index: Int, label: String): NoteButtonKind = when {
+    label.startsWith("Press again", ignoreCase = true) -> NoteButtonKind.WARN
+    index == 0 -> NoteButtonKind.PRIMARY
+    index == 1 -> NoteButtonKind.SECONDARY
+    else -> NoteButtonKind.QUIET
+}
 
 @Composable
-private fun NoteButton(label: String, kind: Kind, enabled: Boolean, working: Boolean, onClick: () -> Unit) {
+private fun NoteButton(label: String, kind: NoteButtonKind, enabled: Boolean, working: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val (bg, fg) = when (kind) {
-        Kind.PRIMARY -> FyiAccent to FyiInk
-        Kind.SECONDARY, Kind.LINK -> Rex.keyBg to Rex.text
-        Kind.QUIET -> Color.Transparent to Rex.textDim
-        Kind.WARN -> Rex.error.copy(alpha = 0.14f) to Rex.error
+        NoteButtonKind.PRIMARY -> FyiAccent to FyiInk
+        NoteButtonKind.SECONDARY, NoteButtonKind.LINK -> Rex.keyBg to Rex.text
+        NoteButtonKind.QUIET -> Color.Transparent to Rex.textDim
+        NoteButtonKind.WARN -> Rex.error.copy(alpha = 0.14f) to Rex.error
     }
     val border = when (kind) {
-        Kind.PRIMARY -> Color.Transparent
-        Kind.WARN -> Rex.error.copy(alpha = 0.6f)
+        NoteButtonKind.PRIMARY -> Color.Transparent
+        NoteButtonKind.WARN -> Rex.error.copy(alpha = 0.6f)
         else -> Rex.divider
     }
     Row(
-        Modifier.heightIn(min = if (kind == Kind.QUIET) 38.dp else 44.dp).clip(shape).background(bg).border(0.5.dp, border, shape)
+        Modifier.heightIn(min = if (kind == NoteButtonKind.QUIET) 38.dp else 44.dp).clip(shape).background(bg).border(0.5.dp, border, shape)
             .alpha(if (enabled || working) 1f else 0.45f)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = if (kind == Kind.QUIET) 12.dp else 16.dp, vertical = 8.dp),
+            .padding(horizontal = if (kind == NoteButtonKind.QUIET) 12.dp else 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (kind == Kind.LINK) {
+        if (kind == NoteButtonKind.LINK) {
             Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, tint = Rex.unseen, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
         }
         Text(
-            label, color = fg, fontSize = if (kind == Kind.QUIET) 13.sp else 14.sp,
-            fontWeight = if (kind == Kind.PRIMARY) FontWeight.SemiBold else FontWeight.Medium, maxLines = 2,
+            label, color = fg, fontSize = if (kind == NoteButtonKind.QUIET) 13.sp else 14.sp,
+            fontWeight = if (kind == NoteButtonKind.PRIMARY) FontWeight.SemiBold else FontWeight.Medium, maxLines = 2,
         )
         if (working) {
             Spacer(Modifier.width(8.dp))

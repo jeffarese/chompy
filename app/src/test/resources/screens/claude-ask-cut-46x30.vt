@@ -1,0 +1,30 @@
+
+[0m[38;2;177;185;249m❯[1C[0m[38;2;153;153;153m1.[1C[0m[38;2;177;185;249mLogin crash fix[0m
+[5C[0m[38;2;153;153;153mResolves the crash users hit when signing[0m
+[5C[0m[38;2;153;153;153min with an expired session token. It [0m
+[5C[0m[38;2;153;153;153maffects the largest share of active [0m
+[5C[0m[38;2;153;153;153maccounts. Shipping it first limits the [0m
+[5C[0m[38;2;153;153;153mmost visible damage.[0m
+[2C[0m[38;2;153;153;153m2.[1C[0mData[1Csync[1Cfix
+[5C[0m[38;2;153;153;153mCorrects records that occasionally fail [0m
+[5C[0m[38;2;153;153;153mto sync between devices and the server. [0m
+[5C[0m[38;2;153;153;153mThe bug can silently drop recent edits. [0m
+[5C[0m[38;2;153;153;153mShipping it first protects user data.[0m
+[2C[0m[38;2;153;153;153m3.[1C[0mPayment[1Cretry[1Cfix
+[5C[0m[38;2;153;153;153mStops duplicate charges when a payment [0m
+[5C[0m[38;2;153;153;153mrequest times out and is retried. It is [0m
+[5C[0m[38;2;153;153;153mnarrow in scope but has direct financial [0m
+[5C[0m[38;2;153;153;153mimpact. Shipping it first avoids refund [0m
+[5C[0m[38;2;153;153;153mwork.[0m
+[2C[0m[38;2;153;153;153m4.[1C[0mSearch[1Cindexing[1Cfix
+[5C[0m[38;2;153;153;153mRepairs search results that miss items [0m
+[5C[0m[38;2;153;153;153mcreated in the last hour. It is low [0m
+[5C[0m[38;2;153;153;153mseverity and has a simple workaround. [0m
+[5C[0m[38;2;153;153;153mShipping it first is only worthwhile if [0m
+[5C[0m[38;2;153;153;153mthe release is otherwise ready.[0m
+[2C[0m[38;2;153;153;153m5. Type something.[0m
+[0m[38;2;153;153;153m──────────────────────────────────────────────[0m
+[2C6.[1CChat[1Cabout[1Cthis
+
+[0m[38;2;153;153;153mEnter to select · Tab/Arrow keys to navigate ·[0m
+[0m[38;2;153;153;153mEsc to cancel[0m

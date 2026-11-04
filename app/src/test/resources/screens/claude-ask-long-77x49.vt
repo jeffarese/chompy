@@ -1,0 +1,49 @@
+     [0m[38;2;153;153;153mcarries the most risk or user impact. The others can follow in later [0m
+     [0m[38;2;153;153;153mreleases. (Login crash fix / Data sync fix / Payment retry fix / Search [0m
+     [0m[38;2;153;153;153mindexing fix)[0m
+     [0m[38;2;153;153;153m· Which checks should run before this release goes out? Select every [0m
+[5C[0m[38;2;153;153;153mcheck you want included in the gate. Skipped checks will be noted in the[0m
+     [0m[38;2;153;153;153mrelease summary. (Unit tests / Typecheck / End-to-end tests / Manual [0m
+     [0m[38;2;153;153;153mpreview check)[0m
+
+[0m[38;2;153;153;153m✻[1CCrunched for 5s · done 11:38 PM · 1 shell still running[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun 'sleep 900' with the Bash tool in the background (run_in_background [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mtrue), then without waiting use the AskUserQuestion tool once with one [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mquestion, header "Responder", whose question text is exactly: "The nightly[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55msync job has been frozen since Saturday at 23:31. The process is alive [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mbut stuck in a network call with no timeout, so it isn't writing anything [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mor logging. That breaks the hand-off for tomorrow's four scheduled exports[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mand for the weekly report. Once restarted, it will catch up on what came [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55min since Saturday: two uploads this morning and a comment on Sunday. How [0m[48;2;55;55;55m  [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mshould I handle it?" with three options: "Fix + restart (Recommended)", [0m[48;2;55;55;55m   [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55m"Restart only", "Leave it stopped", each with a two-sentence description.[0m[48;2;55;55;55m  [0m
+[0m[1m[38;2;177;185;249m◉ [0m[38;2;153;153;153m [0m[1mSleep 900 seconds in background[0m[38;2;153;153;153m  $ sleep 900[0m   [0m[38;2;177;185;249mpinned ↓ · 7.1s[0m  [0m[38;2;153;153;153m▸ details[0m
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;0;0;0m[48;2;177;185;249m ☐ Responder [0m
+     
+[0m[2m│[1C[0m[1m[38;2;255;255;255mThe nightly sync job has been frozen since Saturday at 23:31. The process [0m
+[0m[2m│[1C[0m[1m[38;2;255;255;255mis alive but stuck in a network call with no timeout, so it isn't writing [0m
+[0m[2m│[1C[0m[1m[38;2;255;255;255manything or logging. That breaks the hand-off for tomorrow's four scheduled[0m
+[0m[2m│[1C[0m[1m[38;2;255;255;255mexports and for the weekly report. Once restarted, it will catch up on [0m
+[0m[2m│[1C[0m[1m[38;2;255;255;255mwhat came in since Saturday: two uploads this morning and a comment on [0m
+[0m[2m│[0m [0m[1m[38;2;255;255;255mSunday. How should I handle it?[0m
+
+[0m[38;2;177;185;249m❯[0m [0m[38;2;153;153;153m1.[0m [0m[38;2;177;185;249mFix + restart (Recommended)[0m
+     [0m[38;2;153;153;153mAdd a timeout to the stuck network call, then restart the job so it [0m
+     [0m[38;2;153;153;153mcatches up on the backlog. This prevents the same freeze from happening [0m
+     [0m[38;2;153;153;153magain on the next run. It is the option that fully clears the blocker.[0m
+  [0m[38;2;153;153;153m2.[0m Restart only
+     [0m[38;2;153;153;153mKill the frozen process and start it again without changing any code. [0m
+     [0m[38;2;153;153;153mThe backlog will be processed, but the network call has no timeout, so [0m
+     [0m[38;2;153;153;153mit may freeze again. Use this if you want the fastest path back to [0m
+     [0m[38;2;153;153;153mnormal.[0m
+[2C[0m[38;2;153;153;153m3.[1C[0mLeave[1Cit[1Cstopped
+     [0m[38;2;153;153;153mKeep the job stopped and make no changes for now. Tomorrow's exports and[0m
+     [0m[38;2;153;153;153mthe weekly report will not get their hand-off until this is resolved. [0m
+[2C   [0m[38;2;153;153;153mPick this only if you want to investigate before anything runs.[0m
+  [0m[38;2;153;153;153m4. Type something.[0m
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────[0m
+  5. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · Esc to cancel[0m

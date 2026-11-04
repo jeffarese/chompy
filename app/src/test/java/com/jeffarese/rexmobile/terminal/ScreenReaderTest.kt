@@ -185,6 +185,108 @@ class ScreenReaderTest {
         assertFalse(fixture("claude-permission-bash").prompt!!.claudeQuestion)
     }
 
+    /** What Claude Code 2.1.318 tells Rex while it asks the claude-ask-cut/long-46x* question. */
+    private val askedRelease = "answer: Which fix should we ship first in this release? Pick the one that carries the most " +
+        "risk or user impact. The others can follow in later releases. (Login crash fix · Data sync fix · Payment retry fix · " +
+        "Search indexing fix)"
+    private val releaseQuestion = "Which fix should we ship first in this release? Pick the one that carries the most risk or " +
+        "user impact. The others can follow in later releases."
+    private val releaseFixes = listOf("Login crash fix", "Data sync fix", "Payment retry fix", "Search indexing fix")
+
+    @Test
+    fun claudesQuestionWhole() {
+        // Claude Code 2.1.318 draws a long question with a "│ " gutter, four rows of it at 46 columns.
+        val p = vt("claude-ask-long-46x36", 46, 36).prompt!!
+        assertEquals(releaseQuestion, p.question)
+        assertEquals(listOf("Scope", "Checks", "Submit"), p.tabs.map { it.label })
+        assertEquals(releaseFixes + listOf("Type something.", "Chat about this"), p.options.map { it.label })
+        // And at a phone's 77 columns, a six-row question of a single one.
+        val q = vt("claude-ask-long-77x49", 77, 49).prompt!!
+        assertEquals(
+            "The nightly sync job has been frozen since Saturday at 23:31. The process is alive but stuck in a network call with " +
+                "no timeout, so it isn't writing anything or logging. That breaks the hand-off for tomorrow's four scheduled exports " +
+                "and for the weekly report. Once restarted, it will catch up on what came in since Saturday: two uploads this " +
+                "morning and a comment on Sunday. How should I handle it?",
+            q.question,
+        )
+        assertEquals("…Once restarted, it will catch up on what came in since Saturday: two uploads this morning and a comment on Sunday. How should I handle it?", q.questionEnd(140))
+        assertEquals(q.question, q.questionEnd(1000))
+    }
+
+    @Test
+    fun claudesQuestionWithItsTabsOffTheScreen() {
+        // 30 rows: the tabs and the question are above the screen, the options all on it.
+        val p = vt("claude-ask-cut-46x30", 46, 30).prompt!!
+        assertTrue(p.claudeQuestion)
+        assertEquals(emptyList<QuestionTab>(), p.tabs)
+        assertNull(p.question)
+        assertEquals(releaseFixes + listOf("Type something.", "Chat about this"), p.options.map { it.label })
+        val answer = PromptOption.Role.ANSWER
+        assertEquals(List(4) { answer } + listOf(PromptOption.Role.OWN, PromptOption.Role.CHAT), p.options.map { it.role })
+        assertEquals(listOf(RemoteKey.digit(2)), p.menuKeys(1))
+        // What Claude told Rex fills in the question.
+        val asked = p.withAsked(AskedQuestion.parse(askedRelease))
+        assertEquals(releaseQuestion, asked.question)
+        assertEquals(p.options, asked.options)
+    }
+
+    @Test
+    fun claudesQuestionTallerThanTheScreen() {
+        // 24 rows: option 1, with Claude's highlight, is above the top of the screen too.
+        val p = vt("claude-ask-cut-46x24", 46, 24).prompt!!
+        assertTrue(p.claudeQuestion)
+        assertNull(p.question)
+        assertEquals(listOf(1, 2, 3, 4, 5, 6), p.options.map { it.number })
+        assertEquals(listOf(true, false, false, false, false, false), p.options.map { it.hidden })
+        assertEquals(listOf("") + releaseFixes.drop(1) + listOf("Type something.", "Chat about this"), p.options.map { it.label })
+        assertTrue(p.options.none { it.selected })
+        // Numbers still pick options, the one above the screen too; arrows have no highlight to count from.
+        assertEquals(listOf(RemoteKey.digit(1)), p.menuKeys(0))
+        assertEquals(listOf(RemoteKey.digit(3)), p.menuKeys(2))
+        assertNull(p.moveKeys(2))
+        // What Claude told Rex fills in the question and the option above the screen.
+        val asked = p.withAsked(AskedQuestion.parse(askedRelease))
+        assertEquals(releaseQuestion, asked.question)
+        assertEquals(releaseFixes + listOf("Type something.", "Chat about this"), asked.options.map { it.label })
+        assertTrue(asked.options[0].hidden)
+    }
+
+    @Test
+    fun anotherQuestionsLabelsAreNotFilledIn() {
+        // Rex only hears of a set's first question: on screen is another one, so nothing is filled in.
+        val p = vt("claude-ask-cut-46x24", 46, 24).prompt!!
+        val other = "answer: Which checks should run before this release goes out? (Unit tests · Typecheck · End-to-end tests · Manual preview check)"
+        assertEquals(p, p.withAsked(AskedQuestion.parse(other)))
+        // Nor for as many answers with other labels, nor for a question on screen that isn't the end of Rex's.
+        assertEquals(p, p.withAsked(AskedQuestion("Which fix first?", listOf("A", "B", "C", "D"))))
+        val whole = vt("claude-ask-cut-46x30", 46, 30).prompt!!.copy(question = "Something else?")
+        assertEquals(whole, whole.withAsked(AskedQuestion.parse(askedRelease)))
+        // And not for a question whose tabs are on screen: its top is too.
+        val top = vt("claude-ask-long-46x36", 46, 36).prompt!!
+        assertEquals(top, top.withAsked(AskedQuestion.parse(askedRelease)))
+    }
+
+    @Test
+    fun whatClaudeToldRexItAsks() {
+        val a = AskedQuestion.parse("answer: Our judge test (run 2) came back unresolved. How should we guard against length? " +
+            "(Keep judge + require similar-length win (Recommended) · Re-run the test with a stronger design · Ignore length)")!!
+        assertEquals("Our judge test (run 2) came back unresolved. How should we guard against length?", a.question)
+        assertEquals(listOf("Keep judge + require similar-length win (Recommended)", "Re-run the test with a stronger design", "Ignore length"), a.labels)
+        assertNull(AskedQuestion.parse("approve: Bash date > out.txt"))
+        assertNull(AskedQuestion.parse("answer: no options"))
+        assertNull(AskedQuestion.parse(null))
+    }
+
+    @Test
+    fun onlyClaudesQuestionRunsOffTheTop() {
+        // Numbered lines from the top of the screen and a hint under them, without "Chat about this".
+        val lines = listOf("     the end of the first item", "❯ 2. Second", "     more of it", "  3. Third", "", "Esc to cancel")
+        assertNull(read(lines, 5).prompt)
+        // With it, under its rule.
+        val claude = lines.dropLast(2) + listOf("  4. Type something.", "────────────", "  5. Chat about this", "", "Enter to select · Esc to cancel")
+        assertEquals(listOf(1, 2, 3, 4, 5), read(claude, 8).prompt!!.options.map { it.number })
+    }
+
     @Test
     fun questionWithPreviewsAtPhoneWidth() {
         // Claude Code 2.1.316: the options on the left, the highlighted one's preview boxed on the
@@ -528,6 +630,13 @@ class ScreenReaderTest {
     }
 
     private fun read(lines: List<String>, cursorRow: Int) = ScreenReader.read(lines, cursorRow)
+
+    /** A screen captured as escape sequences, replayed into a terminal of its size. */
+    private fun vt(name: String, columns: Int, rows: Int): ScreenInfo {
+        val t = TestSession(columns = columns, rows = rows)
+        t.print(javaClass.classLoader!!.getResource("screens/$name.vt")!!.readText())
+        return ScreenReader.read(t.emulator)
+    }
 
     /** A captured screen: a "# cursor_row=N ..." line, then the screen's rows. */
     private fun fixture(name: String): ScreenInfo {

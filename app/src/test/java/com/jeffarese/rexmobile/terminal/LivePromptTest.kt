@@ -202,6 +202,39 @@ class LivePromptTest {
             waitFor("the answer", 30_000) { text().contains("→ Long", ignoreCase = true) }
             waitFor("the turn to end", 60_000) { !info().interruptible && info().claudeMode != null && info().prompt == null }
 
+            // A question taller than the screen, as on a phone with the keyboard up: its top, option 1
+            // and the highlight are above the screen. What Claude tells Rex fills in the question and
+            // option 1's label, and option 1 is answered by its number.
+            runBlocking {
+                host.blockMethod(sid, bid, "resize", buildJsonObject {
+                    put("columns", 46)
+                    put("rows", 20)
+                })
+            }
+            t.paste(
+                "Use the AskUserQuestion tool once, with one single-choice question with header \"Release\" asking which fix to " +
+                    "ship first. Give it four options labelled exactly Login fix, Sync fix, Payment fix and Search fix, each " +
+                    "with a three-sentence description.",
+            )
+            t.sendKey(RemoteKey.ENTER)
+            waitFor("the question taller than the screen", 90_000) {
+                info().prompt?.options?.firstOrNull()?.let { it.hidden && it.label.equals("Login fix", ignoreCase = true) } == true
+            }
+            val tall = info().prompt!!
+            println("taller than the screen: $tall")
+            assertTrue(tall.claudeQuestion)
+            assertTrue(tall.question.orEmpty(), tall.question.orEmpty().contains("fix", ignoreCase = true))
+            t.choose(tall, tall.options.first())
+            // At 46 columns the answer wraps, as "→ Login" and "fix".
+            waitFor("the answer", 30_000) { text().replace(Regex("""\s+"""), " ").contains("→ Login fix", ignoreCase = true) }
+            waitFor("the turn to end", 60_000) { !info().interruptible && info().claudeMode != null && info().prompt == null }
+            runBlocking {
+                host.blockMethod(sid, bid, "resize", buildJsonObject {
+                    put("columns", 60)
+                    put("rows", 40)
+                })
+            }
+
             // Escape, sent as a key event, interrupts a turn. The spinner hides while the reply
             // streams, so this also relies on Claude Code reporting that it's working.
             t.paste("Write a 600-word essay about rivers as plain text. Don't use any tools.")
@@ -229,7 +262,8 @@ class LivePromptTest {
             t.paste("/exit")
             t.sendKey(RemoteKey.ENTER)
             waitFor("the shell", 30_000) {
-                info().claudeMode == null && text().contains("claude --resume") && foreground(host, sid, bid) == shell
+                // "claude --resume <id>", or since 2.1.318 with the options it started with, as "claude --model … --resume <id>".
+                info().claudeMode == null && text().contains("--resume") && foreground(host, sid, bid) == shell
             }
             pump(500)
             t.sendKey(RemoteKey.ctrl('u'))

@@ -140,6 +140,35 @@ class PromptOverlayTest {
     }
 
     @Test
+    fun aQuestionTallerThanTheScreenStillHasItsCard() {
+        // Claude's question with its top, option 1 and the highlight off the top of a short screen.
+        val cut = ScreenPrompt(
+            ScreenPrompt.Kind.MENU, null,
+            listOf(
+                PromptOption(1, "", hidden = true),
+                PromptOption(2, "Restart only"),
+                PromptOption(3, "Type something.", role = PromptOption.Role.OWN),
+                PromptOption(4, "Chat about this", role = PromptOption.Role.CHAT),
+            ),
+        )
+        val info = mutableStateOf(ScreenInfo(prompt = cut))
+        show(info, blocked = "answer: How should I handle it? (Fix + restart · Restart only)")
+        rule.onNodeWithText("answer: How should I handle it?", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Claude has a question").assertIsDisplayed()
+        rule.onNodeWithText("Its top is off Claude's screen", substring = true).assertIsDisplayed()
+        rule.onNodeWithText(UNSEEN_OPTION).performClick()
+        assertEquals(listOf(""), chosen)
+
+        // Filled in from what Claude told Rex, it reads as any other.
+        info.value = ScreenInfo(prompt = cut.withAsked(com.jeffarese.rexmobile.terminal.AskedQuestion("How should I handle it?", listOf("Fix + restart", "Restart only"))))
+        settle()
+        rule.onNodeWithText("How should I handle it?").assertIsDisplayed()
+        rule.onNodeWithText("Its top is off Claude's screen", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Fix + restart").performClick()
+        assertEquals(listOf("", "Fix + restart"), chosen)
+    }
+
+    @Test
     fun doubleTapAnswersOnce() {
         val info = mutableStateOf(ScreenInfo(prompt = permission("date > out.txt")))
         show(info)

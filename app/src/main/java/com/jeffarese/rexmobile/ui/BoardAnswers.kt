@@ -145,8 +145,9 @@ internal fun BoardAnswers(prompt: PanePrompt, detail: String?, answering: Prompt
  */
 internal fun asksOf(prompt: PanePrompt, detail: String?): String? {
     val p = prompt.prompt
-    val asks = if (prompt.permission) p.context.joinToString("\n") else p.question
-    val gist = if (prompt.permission) p.context.getOrNull(1) ?: p.context.firstOrNull() else p.question
+    // Of a long question, its end, which asks it.
+    val asks = if (prompt.permission) p.context.joinToString("\n") else p.questionEnd()
+    val gist = if (prompt.permission) p.context.getOrNull(1) ?: p.context.firstOrNull() else p.questionEnd()?.removePrefix("…")
     if (asks.isNullOrBlank()) return null
     return asks.takeUnless { gist != null && detail?.contains(gist.trim(), ignoreCase = true) == true }
 }

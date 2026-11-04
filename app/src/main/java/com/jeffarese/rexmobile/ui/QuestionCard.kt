@@ -151,10 +151,18 @@ private fun QuestionBody(prompt: ScreenPrompt, onChoose: (PromptOption) -> Unit,
     val own = prompt.options.firstOrNull { it.role == PromptOption.Role.OWN }
     val submit = prompt.options.firstOrNull { it.role == PromptOption.Role.SUBMIT }
     val chat = prompt.options.firstOrNull { it.role == PromptOption.Role.CHAT }
+    // The top of a question too tall for Claude's screen, when Claude didn't tell Rex what it is.
+    val cut = prompt.options.any { it.hidden && it.label.isBlank() }
     Text(
         prompt.question ?: "Claude has a question", color = Rex.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 2.dp, bottom = if (multi) 2.dp else 10.dp),
+        modifier = Modifier.padding(top = 2.dp, bottom = if (multi || cut) 2.dp else 10.dp),
     )
+    if (cut) {
+        Text(
+            "Its top is off Claude's screen. Hide this card and scroll up to read it.", color = Rex.textDim, fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = if (multi) 2.dp else 10.dp),
+        )
+    }
     if (multi) Text("Pick any", color = Rex.textDim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 10.dp))
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // Claude's highlight only says where its cursor is: here a tap answers, so it isn't shown.
@@ -172,7 +180,9 @@ private fun QuestionBody(prompt: ScreenPrompt, onChoose: (PromptOption) -> Unit,
             }
             Spacer(Modifier.weight(1f))
             if (submit != null) {
-                PrimaryButton(if (nextIsQuestion(prompt)) "Next" else "Done") { onChoose(submit) }
+                // Submit is reached from Claude's highlight, which may be off the top of the screen.
+                val reachable = prompt.menuKeys(prompt.options.indexOf(submit)) != null
+                PrimaryButton(if (nextIsQuestion(prompt)) "Next" else "Done", enabled = reachable) { onChoose(submit) }
             }
         }
     }
