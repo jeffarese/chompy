@@ -22,16 +22,22 @@ over Tailscale, and a phone with a 64-bit ARM processor on Android 8 or later.
 
 ### Install
 
+<a href="https://play.google.com/store/apps/details?id=com.jeffarese.chompy"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" height="80" alt="Get it on Google Play"></a>
+
+**From [Google Play](https://play.google.com/store/apps/details?id=com.jeffarese.chompy)**, which keeps it
+up to date. It can be a version behind GitHub while Google reviews the latest.
+
+**Or from GitHub:**
+
 1. On the phone, open the **[latest release](https://github.com/jeffarese/chompy/releases/latest)**
    and download `chompy-<version>.apk` from its Assets.
 2. Open the download. Android asks to let your browser (or Files) install apps the first time:
    allow it in the screen it opens, go back, and tap **Install**.
 3. Open Chompy. From then on it finds new versions on GitHub itself and offers them on Home.
 
-Or get it from **[Google Play](https://play.google.com/store/apps/details?id=com.jeffarese.chompy)**,
-which keeps that one up to date and may be a version behind while Google reviews the latest. Both are
-signed with the same key, so you can move from one to the other without uninstalling. To check an APK is Chompy's, `apksigner verify --print-certs chompy-<version>.apk`
-should print this SHA-256 for the certificate:
+Both are signed with the same key, so you can move from one to the other without uninstalling. To check
+an APK is Chompy's, `apksigner verify --print-certs chompy-<version>.apk` should print this SHA-256 for
+the certificate:
 
 ```
 64:03:CD:23:09:07:AF:16:1F:18:22:B7:1B:DA:99:31:64:A5:C2:CB:84:7C:08:C1:84:F0:36:C3:89:2A:59:4A
@@ -322,4 +328,5 @@ Chompy is unofficial: it isn't affiliated with or endorsed by Superlogical, and 
 Rex belongs to Superlogical, and each program's logo to its owner. Jujutsu's logo is copyright 2025
 J. Jennings, SVG by Lucas Garron, under CC BY 4.0. Chompy's style borrows from the
 Android robot, which is reproduced or modified from work created and shared by Google and used
-according to terms described in the Creative Commons 3.0 Attribution License.
+according to terms described in the Creative Commons 3.0 Attribution License. Google Play and the
+Google Play logo are trademarks of Google LLC.
